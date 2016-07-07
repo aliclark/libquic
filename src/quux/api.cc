@@ -1,6 +1,31 @@
-#include "api.h"
-
+#include <base/at_exit.h>
+#include <base/command_line.h>
+#include <base/logging.h>
+#include <base/strings/string_piece.h>
+#include <base/time/time.h>
+#include <net/base/ip_endpoint.h>
+#include <net/base/privacy_mode.h>
+#include <net/quic/crypto/proof_verifier.h>
+#include <net/quic/crypto/quic_crypto_client_config.h>
+#include <net/quic/crypto/quic_crypto_server_config.h>
+#include <net/quic/quic_clock.h>
+#include <net/quic/quic_config.h>
+#include <net/quic/quic_connection.h>
+#include <net/quic/quic_protocol.h>
+#include <net/quic/quic_server_id.h>
+#include <net/quic/quic_simple_buffer_allocator.h>
+#include <net/quic/quic_time.h>
+#include <net/quic/quic_types.h>
 #include <netinet/in.h>
+#include <quux/alarm.h>
+#include <quux/api.h>
+#include <quux/client.h>
+#include <quux/connection.h>
+#include <quux/dispatcher.h>
+#include <quux/proof.h>
+#include <quux/random.h>
+#include <quux/server.h>
+#include <quux/stream.h>
 #include <sys/epoll.h>
 #include <sys/uio.h>
 #include <unistd.h>
@@ -10,32 +35,7 @@
 #include <map>
 #include <memory>
 #include <set>
-
-#include "../base/at_exit.h"
-#include "../base/command_line.h"
-#include "../base/logging.h"
-#include "../base/strings/string_piece.h"
-#include "../base/time/time.h"
-#include "../net/base/ip_endpoint.h"
-#include "../net/quic/crypto/proof_verifier.h"
-#include "../net/quic/crypto/quic_crypto_client_config.h"
-#include "../net/quic/crypto/quic_crypto_server_config.h"
-#include "../net/quic/quic_clock.h"
-#include "../net/quic/quic_config.h"
-#include "../net/quic/quic_connection.h"
-#include "../net/quic/quic_protocol.h"
-#include "../net/quic/quic_server_id.h"
-#include "../net/quic/quic_simple_buffer_allocator.h"
-#include "../net/quic/quic_time.h"
-#include "../net/quic/quic_types.h"
-#include "alarm.h"
-#include "client.h"
-#include "connection.h"
-#include "dispatcher.h"
-#include "proof.h"
-#include "random.h"
-#include "server.h"
-#include "stream.h"
+#include <utility>
 
 /*
  * XXX: Possible over-sharing of context things like packet-writer
@@ -206,6 +206,9 @@ public:
 			out_messages[i].msg_hdr.msg_iov = &writer.iov[i];
 			out_messages[i].msg_hdr.msg_iovlen = 1;
 		}
+
+		net::QuicConnectionDebugVisitor* debug_visitor = new quux::connection::Logger();
+		connection.set_debug_visitor(debug_visitor);
 	}
 
 	const int sd;
@@ -229,6 +232,10 @@ public:
 namespace quux {
 quux::client::Session* peer_session(quux_p_impl* peer) {
 	return &peer->session;
+}
+
+quux_cb c_readable_cb(quux_c_impl* ctx) {
+	return ctx->quux_readable;
 }
 }
 
@@ -432,18 +439,25 @@ void quux_write_please(quux_c_impl* stream) {
 		return;
 	}
 
+	// TODO: interest for a connected stream
 }
 
 ssize_t quux_write(quux_c_impl* stream, const struct iovec* iov) {
 
 	if (!stream->session->crypto_connected) {
-
+		stream->session->cconnect_interest_set.insert(stream);
+		return 0;
 	}
 
 	bool fin = false;
 	net::QuicAckListenerInterface* ack_listener = nullptr;
 	net::QuicConsumedData consumed(
 			stream->stream.WritevData(iov, 1, fin, ack_listener));
+
+	if (consumed.bytes_consumed == 0) {
+		// FIXME: add a callback for the flow controller and whatever
+		// else becoming unblocked
+	}
 
 	// XXX: somehow indicate the socket as needing flush
 
@@ -460,8 +474,12 @@ void quux_read_please(quux_c_impl* stream) {
 }
 
 ssize_t quux_read(quux_c stream, struct iovec* iov) {
-
-	return 0;
+	int data_read = stream->stream.Readv(iov, 1);
+	if (data_read == 0) {
+		// re-register an interest in reading
+		stream->stream.read_wanted = true;
+	}
+	return data_read;
 }
 
 void quux_read_close(quux_c stream) {

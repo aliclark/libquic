@@ -8,10 +8,15 @@
 #ifndef SRC_QUUX_STREAM_H_
 #define SRC_QUUX_STREAM_H_
 
-#include "../net/quic/quic_protocol.h"
-#include "../net/quic/quic_spdy_stream.h"
-#include "../net/quic/quic_types.h"
-#include "../net/quic/reliable_quic_stream.h"
+#include <net/quic/quic_protocol.h>
+#include <net/quic/quic_stream_sequencer.h>
+#include <net/quic/quic_types.h>
+#include <net/quic/reliable_quic_stream.h>
+#include <quux/quux_internal.h>
+#include <stddef.h>
+#include <cstdio>
+
+class quux_c_impl;
 
 // circular include
 //#include "client.h"
@@ -24,10 +29,15 @@ class Session;
 
 class Stream: public net::ReliableQuicStream {
 public:
-	Stream(net::QuicStreamId id, quux::client::Session* session);
+	Stream(net::QuicStreamId id, quux::client::Session* session, quux_c_impl* ctx);
 
 	void OnDataAvailable() override {
-		printf("stream::ondataavailable\n");
+		printf("quux::client::Stream::OnDataAvailable\n");
+
+		if (read_wanted) {
+			read_wanted = false;
+			quux::c_readable_cb(ctx)(ctx);
+		}
 	}
 
 	// ReliableQuicStream::WritevData is protected,
@@ -41,6 +51,14 @@ public:
 
 	virtual ~Stream() {
 	}
+
+	// access to protected stuff
+	int Readv(const struct iovec* iov, size_t iov_len) {
+		return sequencer()->Readv(iov, iov_len);
+	}
+
+	quux_c_impl* ctx;
+	bool read_wanted = false;
 };
 
 } /* namespace quux */

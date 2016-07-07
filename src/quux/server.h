@@ -148,15 +148,29 @@ public:
 
 class Stream: public net::QuicSpdyStream {
 public:
-	Stream(net::QuicStreamId id, net::QuicSpdySession* spdy_session) :
-			net::QuicSpdyStream(id, spdy_session) {
+	Stream(net::QuicStreamId id, net::QuicSpdySession* spdy_session, quux_c_impl* ctx) :
+			QuicSpdyStream(id, spdy_session), ctx(ctx) {
 
-		// needed? session->RegisterStreamPriority(id, net::kDefaultPriority);
+		// QuicSpdyStream::QuicSpdyStream set it blocked for SPDY reasons - undo that
+		sequencer()->SetUnblocked();
 	}
 
-	void OnDataAvailable() override {
-		printf("server::stream::ondataavailable\n");
+	virtual void OnStreamFrame(const net::QuicStreamFrame& frame) override {
+		QuicSpdyStream::OnStreamFrame(frame);
 	}
+
+	virtual void OnDataAvailable() override {
+		printf("quux::server::Stream::OnDataAvailable\n");
+
+		if (read_wanted) {
+			printf("read wanted\n");
+			read_wanted = false;
+			ctx->quux_readable(ctx);
+		}
+	}
+
+	quux_c_impl* ctx;
+	bool read_wanted = false;
 };
 
 class Session: public net::QuicServerSessionBase {
@@ -172,8 +186,14 @@ public:
 
 	net::QuicSpdyStream* CreateIncomingDynamicStream(net::QuicStreamId id)
 			override {
-		Stream* stream = new Stream(id, this);
+
+		// FIXME: around here we can create the ctx for this stream
+		// and do quux_accept(ctx)
+		quux_c_impl* ctx = nullptr;
+
+		Stream* stream = new Stream(id, this, ctx);
 		ActivateStream(stream);
+
 		return stream;
 	}
 

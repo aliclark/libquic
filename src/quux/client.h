@@ -8,6 +8,20 @@
 #ifndef SRC_QUUX_CLIENT_H_
 #define SRC_QUUX_CLIENT_H_
 
+#include <net/base/ip_address.h>
+#include <net/quic/crypto/proof_verifier.h>
+#include <net/quic/crypto/quic_crypto_client_config.h>
+#include <net/quic/quic_bandwidth.h>
+#include <net/quic/quic_crypto_client_stream.h>
+#include <net/quic/quic_packet_writer.h>
+#include <net/quic/quic_protocol.h>
+#include <net/quic/quic_server_id.h>
+#include <net/quic/quic_session.h>
+#include <net/quic/quic_types.h>
+#include <net/quic/quic_write_blocked_list.h>
+#include <net/spdy/spdy_protocol.h>
+#include <quux/quux_c.h>
+#include <quux/stream.h>
 #include <stddef.h>
 #include <sys/uio.h>
 #include <cassert>
@@ -16,22 +30,6 @@
 #include <cstring>
 #include <set>
 #include <utility>
-
-#include "quux_c.h"
-#include "api.h"
-#include "../net/base/ip_address.h"
-#include "../net/quic/crypto/proof_verifier.h"
-#include "../net/quic/crypto/quic_crypto_client_config.h"
-#include "../net/quic/quic_bandwidth.h"
-#include "../net/quic/quic_crypto_client_stream.h"
-#include "../net/quic/quic_packet_writer.h"
-#include "../net/quic/quic_protocol.h"
-#include "../net/quic/quic_server_id.h"
-#include "../net/quic/quic_session.h"
-#include "../net/quic/quic_types.h"
-#include "../net/quic/quic_write_blocked_list.h"
-#include "../net/spdy/spdy_protocol.h"
-#include "stream.h"
 
 namespace quux {
 
@@ -120,12 +118,21 @@ public:
 		Initialize();
 		// XXX: Is it too early to do this?
 		crypto_stream->CryptoConnect();
+
+		// Err, I think this is needed as an ugly hack so the first stream ID
+		// isn't the reserved SPDY headers stream ID
+		GetNextOutgoingStreamId();
 	}
 
 	net::ReliableQuicStream* CreateIncomingDynamicStream(net::QuicStreamId id)
 			override {
 		printf("CreateIncomingDynamicStream(%d)\n", id);
-		quux::Stream* stream = new quux::Stream(id, this);
+
+		// XXX: at the moment we ignore the server end opening a connection
+		// to us in terms of app communication
+		quux_c_impl* ctx = nullptr;
+
+		quux::Stream* stream = new quux::Stream(id, this, ctx);
 		ActivateStream(stream);
 		return stream;
 	}
@@ -157,11 +164,14 @@ public:
 
 	void OnCryptoHandshakeEvent(CryptoHandshakeEvent event) override {
 		QuicSession::OnCryptoHandshakeEvent(event);
+		printf("############ OnCryptoHandshakeEvent %d\n", event);
 
-		if (event == QuicSession::ENCRYPTION_FIRST_ESTABLISHED) {
+		if (!crypto_connected) {
+			printf("############ ENCRYPTION_ESTABLISHED\n");
 			crypto_connected = true;
 
 			for (quux_c_impl* ctx : cconnect_interest_set) {
+				printf("############ CALLBACK\n");
 				ctx->quux_writeable(ctx);
 			}
 			cconnect_interest_set.clear();

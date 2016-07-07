@@ -8,6 +8,7 @@ namespace quux {
         }
 
         quux::client::Session* peer_session(quux_p_impl*);
+        quux_cb c_readable_cb(quux_c_impl* ctx);
 
 } // namespace quux
 

@@ -2,8 +2,8 @@
 #ifndef SRC_QUUX_C_H_
 #define SRC_QUUX_C_H_
 
-#include "api.h"
-#include "stream.h"
+#include <quux/api.h>
+#include <quux/stream.h>
 
 class quux_c_impl {
 public:

@@ -42,6 +42,9 @@ public:
 				client_address, helper(), alarm_factory(), writer(),
 				false, net::Perspective::IS_SERVER, GetSupportedVersions());
 
+		net::QuicConnectionDebugVisitor* debug_visitor = new quux::connection::Logger();
+		connection->set_debug_visitor(debug_visitor);
+
 #if 0
 		net::QuicServerSessionBase* session = new net::QuicSimpleServerSession(
 				config_, connection, this, session_helper_.get(),
@@ -53,9 +56,6 @@ public:
 				compressed_certs_cache());
 
 		return session;
-
-		assert(0);
-		return nullptr;
 	}
 
 	virtual ~Dispatcher() {
