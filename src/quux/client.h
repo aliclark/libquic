@@ -17,6 +17,8 @@
 #include <set>
 #include <utility>
 
+#include "quux_c.h"
+#include "api.h"
 #include "../net/base/ip_address.h"
 #include "../net/quic/crypto/proof_verifier.h"
 #include "../net/quic/crypto/quic_crypto_client_config.h"
@@ -189,7 +191,7 @@ public:
 	bool crypto_connected = false;
 
 	typedef std::set<quux_c_impl*> CryptoConnectInterestSet;
-	static CryptoConnectInterestSet cconnect_interest_set;
+	CryptoConnectInterestSet cconnect_interest_set;
 };
 
 } /* namespace client */

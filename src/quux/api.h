@@ -4,20 +4,19 @@
 #include <sys/socket.h>
 #include <stdio.h>
 
+#ifdef __cplusplus
 class quux_c_impl;
 class quux_p_impl;
 class quux_s_impl;
-
-#ifdef __cplusplus
-typedef const class quux_s_impl* quux_s;
-typedef const class quux_c_impl* quux_c;
-typedef const class quux_p_impl* quux_p;
+typedef class quux_s_impl* quux_s;
+typedef class quux_c_impl* quux_c;
+typedef class quux_p_impl* quux_p;
 extern "C" {
 
 #else
-typedef const struct quux_s_impl* quux_s;
-typedef const struct quux_c_impl* quux_c;
-typedef const struct quux_p_impl* quux_p;
+typedef struct quux_s_impl* quux_s;
+typedef struct quux_c_impl* quux_c;
+typedef struct quux_p_impl* quux_p;
 #endif // __cplusplus
 
 typedef const void (*quux_cb)(quux_c_impl*);

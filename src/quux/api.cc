@@ -226,22 +226,13 @@ public:
 	struct mmsghdr out_messages[quux::client::packet::NUM_OUT_MESSAGES];
 };
 
-class quux_c_impl {
-public:
-	explicit quux_c_impl(quux_p_impl* peer, quux_cb quux_writeable,
-			quux_cb quux_readable) :
-			peer(peer), quux_writeable(quux_writeable), quux_readable(
-					quux_readable), stream(
-					peer->session.GetNextOutgoingStreamId(), &peer->session), session(
-					&peer->session) {
-	}
+namespace quux {
+quux::client::Session* peer_session(quux_p_impl* peer) {
+	return &peer->session;
+}
+}
 
-	quux_p peer;
-	quux_cb quux_writeable;
-	quux_cb quux_readable;
-	quux::Stream stream;
-	quux::client::Session* session;
-};
+#include "quux_c.h"
 
 namespace {
 

@@ -2,18 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#define QUUX_PATCH
-
 #include "quux/server/stateless_rejector.h"
 
 #include "net/quic/quic_crypto_server_stream.h"
 #include "net/quic/quic_flags.h"
-
-#ifdef QUUX_PATCH
-namespace {
-static const bool FLAGS_quic_use_cheap_stateless_rejects = false;
-}
-#endif
 
 namespace net {
 
@@ -67,9 +59,7 @@ void StatelessRejector::OnChlo(QuicVersion version,
 
   if (!FLAGS_enable_quic_stateless_reject_support ||
       !FLAGS_quic_use_cheap_stateless_rejects ||
-#ifndef QUUX_PATCH
 	  !QuicCryptoServerStream::DoesPeerSupportStatelessRejects(message) ||
-#endif
       version <= QUIC_VERSION_32) {
     state_ = UNSUPPORTED;
     return;
@@ -91,9 +81,7 @@ void StatelessRejector::ProcessClientHello(
   DiversificationNonce diversification_nonce;
   QuicErrorCode error = crypto_config_->ProcessClientHello(
       result,
-#ifndef QUUX_PATCH
 	  /*reject_only=*/true,
-#endif
 	  connection_id_, server_address_.address(),
       client_address_, version_, versions_,
       /*use_stateless_rejects=*/true, server_designated_connection_id_, clock_,

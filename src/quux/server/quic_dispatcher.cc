@@ -31,23 +31,6 @@ namespace net {
 
 namespace {
 
-#ifdef QUUX_PATCH
-static const bool FLAGS_quic_disable_pre_30 = true;
-static const bool FLAGS_quic_use_cheap_stateless_rejects = false;
-
-// XXX: copied from quic_protocol.cc
-static QuicVersionVector FilterSupportedVersions(QuicVersionVector versions) {
-  QuicVersionVector filtered_versions(versions.size());
-  filtered_versions.clear();  // Guaranteed by spec not to change capacity.
-  for (QuicVersion version : versions) {
-    if (!FLAGS_quic_disable_pre_30 || version >= QUIC_VERSION_30) {
-      filtered_versions.push_back(version);
-    }
-  }
-  return filtered_versions;
-}
-#endif // QUUX_PATCH
-
 // An alarm that informs the QuicDispatcher to delete old sessions.
 class DeleteSessionsAlarm : public QuicAlarm::Delegate {
  public:
