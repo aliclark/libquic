@@ -65,7 +65,7 @@ public:
 
 		// XXX: at the moment we ignore the server end opening a connection
 		// to us in terms of app communication
-		quux_c_impl* ctx = nullptr;
+		quux_stream ctx = nullptr;
 
 		net::ReliableQuicStream* stream = quux::client::create_reliable_stream(id, this, ctx);
 		return stream;
@@ -104,7 +104,7 @@ public:
 			printf("############ ENCRYPTION_ESTABLISHED\n");
 			crypto_connected = true;
 
-			for (quux_c_impl* ctx : cconnect_interest_set) {
+			for (quux_stream ctx : cconnect_interest_set) {
 				printf("############ CALLBACK\n");
 				quux::c_writeable_cb(ctx)(ctx);
 			}
@@ -134,14 +134,14 @@ public:
 	net::QuicCryptoClientStream* crypto_stream;
 	bool crypto_connected = false;
 
-	typedef std::set<quux_c_impl*> CryptoConnectInterestSet;
+	typedef std::set<quux_stream> CryptoConnectInterestSet;
 	CryptoConnectInterestSet cconnect_interest_set;
 };
 
 class Stream: public net::ReliableQuicStream {
 public:
 	// ReliableQuic(id,session) needs to know Session is a QuicSession
-	Stream(net::QuicStreamId id, quux::client::Session* session, quux_c_impl* ctx) :
+	Stream(net::QuicStreamId id, quux::client::Session* session, quux_stream ctx) :
 			ReliableQuicStream(id, session), ctx(ctx) {
 
 		quux::client::session::register_stream_priority(session, id);
@@ -174,7 +174,7 @@ public:
 		return sequencer()->Readv(iov, iov_len);
 	}
 
-	quux_c_impl* ctx;
+	quux_stream ctx;
 	bool read_wanted = false;
 };
 
@@ -185,7 +185,7 @@ static const int NUM_OUT_MESSAGES = 256;
 class Writer: public net::QuicPacketWriter {
 public:
 
-	Writer(std::set<quux_p_impl*>* writes_ready_set, quux_p_impl* peer) :
+	Writer(std::set<quux_conn>* writes_ready_set, quux_conn peer) :
 			writes_ready_set(writes_ready_set), peer(peer) {
 
 		for (int i = 0; i < NUM_OUT_MESSAGES; ++i) {
@@ -238,8 +238,8 @@ public:
 	struct iovec iov[NUM_OUT_MESSAGES];
 	int num = 0;
 
-	quux_p_impl* peer;
-	std::set<quux_p_impl*>* writes_ready_set;
+	quux_conn peer;
+	std::set<quux_conn>* writes_ready_set;
 };
 
 } /* namespace packet */

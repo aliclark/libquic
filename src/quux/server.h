@@ -48,7 +48,7 @@ static const int NUM_OUT_MESSAGES = 256;
 class Writer: public net::QuicPacketWriter {
 public:
 
-	Writer(std::set<quux_s_impl*>* writes_ready_set, quux_s_impl* ctx) :
+	Writer(std::set<quux_listener>* writes_ready_set, quux_listener ctx) :
 			writes_ready_set(writes_ready_set), ctx(ctx) {
 
 		for (int i = 0; i < NUM_OUT_MESSAGES; ++i) {
@@ -107,8 +107,8 @@ public:
 	struct mmsghdr out_messages[NUM_OUT_MESSAGES];
 	int num = 0;
 
-	quux_s_impl* ctx;
-	std::set<quux_s_impl*>* writes_ready_set;
+	quux_listener ctx;
+	std::set<quux_listener>* writes_ready_set;
 };
 
 } /* namespace packet */
@@ -151,7 +151,7 @@ public:
 
 class Stream: public net::QuicSpdyStream {
 public:
-	Stream(net::QuicStreamId id, net::QuicSpdySession* spdy_session, quux_c_impl* ctx) :
+	Stream(net::QuicStreamId id, net::QuicSpdySession* spdy_session, quux_stream ctx) :
 			QuicSpdyStream(id, spdy_session), ctx(ctx) {
 
 		// QuicSpdyStream::QuicSpdyStream set it blocked for SPDY reasons - undo that
@@ -172,7 +172,7 @@ public:
 		}
 	}
 
-	quux_c_impl* ctx;
+	quux_stream ctx;
 	bool read_wanted = false;
 };
 
@@ -192,7 +192,8 @@ public:
 
 		// FIXME: around here we can create the ctx for this stream
 		// and do quux_accept(ctx)
-		quux_c_impl* ctx = nullptr;
+
+		quux_stream ctx = nullptr;
 
 		Stream* stream = new Stream(id, this, ctx);
 		ActivateStream(stream);

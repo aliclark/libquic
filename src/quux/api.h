@@ -5,21 +5,21 @@
 #include <stdio.h>
 
 #ifdef __cplusplus
-class quux_c_impl;
-class quux_p_impl;
-class quux_s_impl;
-typedef class quux_s_impl* quux_s;
-typedef class quux_c_impl* quux_c;
-typedef class quux_p_impl* quux_p;
+class quux_stream_impl;
+class quux_conn_impl;
+class quux_listener_impl;
+typedef class quux_listener_impl* quux_listener;
+typedef class quux_stream_impl* quux_stream;
+typedef class quux_conn_impl* quux_conn;
 extern "C" {
 
 #else
-typedef struct quux_s_impl* quux_s;
-typedef struct quux_c_impl* quux_c;
-typedef struct quux_p_impl* quux_p;
+typedef struct quux_listener_impl* quux_listener;
+typedef struct quux_stream_impl* quux_stream;
+typedef struct quux_conn_impl* quux_conn;
 #endif // __cplusplus
 
-typedef void (*quux_cb)(quux_c_impl*);
+typedef void (*quux_cb)(quux_stream);
 
 /*
  * Callbacks are triggered once when IO becomes actionable, at which point no callback will be triggered until
@@ -43,18 +43,18 @@ bool quux_init(void);
  *
  * TODO: error if there is already a server listening on ip:port
  */
-quux_s quux_listen(const struct sockaddr* self, quux_cb quux_accept,
+quux_listener quux_listen(const struct sockaddr* self, quux_cb quux_accept,
 		quux_cb quux_writeable, quux_cb quux_readable);
 
 /**
  * A handle representing an IPv4 connection to the peer
  */
-quux_p_impl* quux_peer(const struct sockaddr* peer);
+quux_conn quux_peer(const struct sockaddr* peer);
 
 /**
  * Create a new stream with the peer
  */
-quux_c_impl* quux_connect(quux_p_impl* peer, quux_cb quux_writeable,
+quux_stream quux_connect(quux_conn peer, quux_cb quux_writeable,
 		quux_cb quux_readable);
 
 /**
@@ -68,17 +68,17 @@ quux_c_impl* quux_connect(quux_p_impl* peer, quux_cb quux_writeable,
  * it's at the discretion of the impl to wait as long as necessary to receive acks for data before tearing down.
  * At some point more functions could be added to query the status of buffered data and force remove if needed.
  */
-ssize_t quux_write(quux_c_impl* stream, const struct iovec* iov);
+ssize_t quux_write(quux_stream stream, const struct iovec* iov);
 
 /**
  * Re-registers the callback
  */
-void quux_write_please(quux_c_impl* stream);
+void quux_write_please(quux_stream stream);
 
 /**
  * Indicate we don't want to write any additional data to the stream.
  */
-void quux_write_close(quux_c stream);
+void quux_write_close(quux_stream stream);
 
 /**
  * Read up to iov->iov_len amount of data from the stream into iov->iov_base
@@ -87,22 +87,22 @@ void quux_write_close(quux_c stream);
  * 0 indicates that no data could be read at this time, but the callback has been re-registered.
  * -1 indicates that the read stream is closed.
  */
-ssize_t quux_read(quux_c stream, struct iovec* iov);
+ssize_t quux_read(quux_stream stream, struct iovec* iov);
 
 /**
  * Re-registers the callback
  */
-void quux_read_please(quux_c_impl* stream);
+void quux_read_please(quux_stream stream);
 
 /**
  * Indicate we don't want to read any additional data from the stream.
  */
-void quux_read_close(quux_c stream);
+void quux_read_close(quux_stream stream);
 
 /**
  * Stop accepting connections
  */
-void quux_shutdown(quux_s server);
+void quux_shutdown(quux_listener server);
 
 /**
  * Run the event loop forever and ever

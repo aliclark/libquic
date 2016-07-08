@@ -21,15 +21,15 @@ void activate_stream(quux::client::Session* session,
 } // namespace session
 
 quux::client::Stream* create_stream(net::QuicStreamId id,
-		quux::client::Session* session, quux_c_impl* ctx);
+		quux::client::Session* session, quux_stream ctx);
 net::ReliableQuicStream* create_reliable_stream(net::QuicStreamId id,
-		quux::client::Session* session, quux_c_impl* ctx);
+		quux::client::Session* session, quux_stream ctx);
 
 } // namespace client
 
-quux::client::Session* peer_session(quux_p_impl*);
-quux_cb c_readable_cb(quux_c_impl* ctx);
-quux_cb c_writeable_cb(quux_c_impl* ctx);
+quux::client::Session* peer_session(quux_conn peer);
+quux_cb c_readable_cb(quux_stream ctx);
+quux_cb c_writeable_cb(quux_stream ctx);
 
 } // namespace quux
 
