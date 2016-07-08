@@ -74,11 +74,22 @@ static const base::AtExitManager exit_manager;
 static const net::QuicVersionVector supported_versions(
 		net::QuicSupportedVersions());
 
+static base::TimeTicks approx_time_ticks = base::TimeTicks::Now();
+
+class AClock: public net::QuicClock {
+public:
+	AClock() {}
+
+	net::QuicTime Now() const override {
+		return net::QuicTime(approx_time_ticks);
+	}
+};
+
 // TODO: make caching
-static const net::QuicClock quic_clock;
+static AClock quic_clock;
 static quux::Random quux_random;
 static net::SimpleBufferAllocator buffer_allocator;
-static quux::connection::Helper helper(&quic_clock, &quux_random,
+static quux::connection::Helper helper((net::QuicClock*)&quic_clock, &quux_random,
 		&buffer_allocator);
 
 typedef std::set<quux_conn> WritesReadySet;
@@ -524,7 +535,7 @@ void quux_read_close(quux_stream stream) {
 void quux_loop(void) {
 	int ed = mainepolld;
 
-	base::TimeTicks approx_time_ticks(base::TimeTicks::Now());
+	approx_time_ticks = base::TimeTicks::Now();
 	int64_t approx_micros = approx_time_ticks.ToInternalValue();
 
 	for (EVER_AND_EVER) {
