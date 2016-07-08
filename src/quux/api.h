@@ -19,7 +19,7 @@ typedef struct quux_c_impl* quux_c;
 typedef struct quux_p_impl* quux_p;
 #endif // __cplusplus
 
-typedef const void (*quux_cb)(quux_c_impl*);
+typedef void (*quux_cb)(quux_c_impl*);
 
 /*
  * Callbacks are triggered once when IO becomes actionable, at which point no callback will be triggered until
@@ -105,7 +105,7 @@ void quux_read_close(quux_c stream);
 void quux_shutdown(quux_s server);
 
 /**
- * Do a single event loop run
+ * Run the event loop forever and ever
  */
 void quux_loop(void);
 

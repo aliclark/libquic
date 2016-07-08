@@ -17,11 +17,12 @@
 #include <net/quic/quic_protocol.h>
 #include <net/quic/quic_server_id.h>
 #include <net/quic/quic_session.h>
+#include <net/quic/quic_stream_sequencer.h>
 #include <net/quic/quic_types.h>
 #include <net/quic/quic_write_blocked_list.h>
+#include <net/quic/reliable_quic_stream.h>
 #include <net/spdy/spdy_protocol.h>
-#include <quux/quux_c.h>
-#include <quux/stream.h>
+#include <quux/internal.h>
 #include <stddef.h>
 #include <sys/uio.h>
 #include <cassert>
@@ -34,6 +35,148 @@
 namespace quux {
 
 namespace client {
+
+class Session: public net::QuicSession {
+public:
+
+	Session(net::QuicConnection* connection, const net::QuicConfig& config,
+			const net::QuicServerId& server_id,
+			net::ProofVerifyContext* verify_context,
+			net::QuicCryptoClientConfig* crypto_config,
+			net::QuicCryptoClientStream::ProofHandler* proof_handler) :
+			crypto_stream(
+					new net::QuicCryptoClientStream(server_id, this,
+							verify_context, crypto_config, proof_handler)), QuicSession(
+					connection, config) {
+
+		// XXX: dodgy virtual method call in constructor?
+		Initialize();
+		// XXX: Is it too early to do this?
+		crypto_stream->CryptoConnect();
+
+		// Err, I think this is needed as an ugly hack so the first stream ID
+		// isn't the reserved SPDY headers stream ID
+		GetNextOutgoingStreamId();
+	}
+
+	net::ReliableQuicStream* CreateIncomingDynamicStream(net::QuicStreamId id)
+			override {
+		printf("CreateIncomingDynamicStream(%d)\n", id);
+
+		// XXX: at the moment we ignore the server end opening a connection
+		// to us in terms of app communication
+		quux_c_impl* ctx = nullptr;
+
+		net::ReliableQuicStream* stream = quux::client::create_reliable_stream(id, this, ctx);
+		return stream;
+	}
+
+	net::ReliableQuicStream* CreateOutgoingDynamicStream(
+			net::SpdyPriority priority) override {
+		assert(0);
+		printf("CreateOutgoingDynamicStream(%d)\n", priority);
+
+		return nullptr;
+	}
+
+#if 0
+	// Nb. not override, because we are returning quux::Stream* instead.
+	// Since we appear to be the only users of the method we could ignore it
+	// and do our own thing instead, but it doesn't matter anyway
+	quux::Stream* CreateOutgoingDynamicStream(net::SpdyPriority priority) {
+		uint32_t value;
+		crypto::RandBytes(&value, sizeof(value));
+		net::QuicStreamId id(value);
+		quux::Stream* stream = new Stream(id, this);
+		return stream;
+	}
+#endif
+
+	net::QuicCryptoStream* GetCryptoStream() override {
+		return crypto_stream;
+	}
+
+	void OnCryptoHandshakeEvent(CryptoHandshakeEvent event) override {
+		QuicSession::OnCryptoHandshakeEvent(event);
+		printf("############ OnCryptoHandshakeEvent %d\n", event);
+
+		if (!crypto_connected) {
+			printf("############ ENCRYPTION_ESTABLISHED\n");
+			crypto_connected = true;
+
+			for (quux_c_impl* ctx : cconnect_interest_set) {
+				printf("############ CALLBACK\n");
+				quux::c_writeable_cb(ctx)(ctx);
+			}
+			cconnect_interest_set.clear();
+		}
+	}
+
+	/// exposing protected methods
+
+	void RegisterStreamPriority(net::QuicStreamId id,
+			net::SpdyPriority priority) {
+		write_blocked_streams()->RegisterStream(id, priority);
+	}
+
+	// because QuicSession::ActivateStream is protected
+	void ActivateStream(net::ReliableQuicStream* stream) override {
+		QuicSession::ActivateStream(stream);
+	}
+
+	net::QuicStreamId GetNextOutgoingStreamId() {
+		return QuicSession::GetNextOutgoingStreamId();
+	}
+
+	virtual ~Session() {
+	}
+
+	net::QuicCryptoClientStream* crypto_stream;
+	bool crypto_connected = false;
+
+	typedef std::set<quux_c_impl*> CryptoConnectInterestSet;
+	CryptoConnectInterestSet cconnect_interest_set;
+};
+
+class Stream: public net::ReliableQuicStream {
+public:
+	// ReliableQuic(id,session) needs to know Session is a QuicSession
+	Stream(net::QuicStreamId id, quux::client::Session* session, quux_c_impl* ctx) :
+			ReliableQuicStream(id, session), ctx(ctx) {
+
+		quux::client::session::register_stream_priority(session, id);
+		quux::client::session::activate_stream(session, this);
+	}
+
+	void OnDataAvailable() override {
+		printf("quux::client::Stream::OnDataAvailable\n");
+
+		if (read_wanted) {
+			read_wanted = false;
+			quux::c_readable_cb(ctx)(ctx);
+		}
+	}
+
+	// ReliableQuicStream::WritevData is protected,
+	// so this can be used to write to it instead
+	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
+	bool fin, net::QuicAckListenerInterface* ack_listener) {
+
+		return net::ReliableQuicStream::WritevData(iov, iov_count, fin,
+				ack_listener);
+	}
+
+	virtual ~Stream() {
+	}
+
+	// access to protected stuff
+	int Readv(const struct iovec* iov, size_t iov_len) {
+		return sequencer()->Readv(iov, iov_len);
+	}
+
+	quux_c_impl* ctx;
+	bool read_wanted = false;
+};
 
 namespace packet {
 
@@ -100,109 +243,6 @@ public:
 };
 
 } /* namespace packet */
-
-class Session: public net::QuicSession {
-public:
-
-	Session(net::QuicConnection* connection, const net::QuicConfig& config,
-			const net::QuicServerId& server_id,
-			net::ProofVerifyContext* verify_context,
-			net::QuicCryptoClientConfig* crypto_config,
-			net::QuicCryptoClientStream::ProofHandler* proof_handler) :
-			crypto_stream(
-					new net::QuicCryptoClientStream(server_id, this,
-							verify_context, crypto_config, proof_handler)), QuicSession(
-					connection, config) {
-
-		// XXX: dodgy virtual method call in constructor?
-		Initialize();
-		// XXX: Is it too early to do this?
-		crypto_stream->CryptoConnect();
-
-		// Err, I think this is needed as an ugly hack so the first stream ID
-		// isn't the reserved SPDY headers stream ID
-		GetNextOutgoingStreamId();
-	}
-
-	net::ReliableQuicStream* CreateIncomingDynamicStream(net::QuicStreamId id)
-			override {
-		printf("CreateIncomingDynamicStream(%d)\n", id);
-
-		// XXX: at the moment we ignore the server end opening a connection
-		// to us in terms of app communication
-		quux_c_impl* ctx = nullptr;
-
-		quux::Stream* stream = new quux::Stream(id, this, ctx);
-		ActivateStream(stream);
-		return stream;
-	}
-
-	net::ReliableQuicStream* CreateOutgoingDynamicStream(
-			net::SpdyPriority priority) override {
-		assert(0);
-		printf("CreateOutgoingDynamicStream(%d)\n", priority);
-
-		return nullptr;
-	}
-
-#if 0
-	// Nb. not override, because we are returning quux::Stream* instead.
-	// Since we appear to be the only users of the method we could ignore it
-	// and do our own thing instead, but it doesn't matter anyway
-	quux::Stream* CreateOutgoingDynamicStream(net::SpdyPriority priority) {
-		uint32_t value;
-		crypto::RandBytes(&value, sizeof(value));
-		net::QuicStreamId id(value);
-		quux::Stream* stream = new Stream(id, this);
-		return stream;
-	}
-#endif
-
-	net::QuicCryptoStream* GetCryptoStream() override {
-		return crypto_stream;
-	}
-
-	void OnCryptoHandshakeEvent(CryptoHandshakeEvent event) override {
-		QuicSession::OnCryptoHandshakeEvent(event);
-		printf("############ OnCryptoHandshakeEvent %d\n", event);
-
-		if (!crypto_connected) {
-			printf("############ ENCRYPTION_ESTABLISHED\n");
-			crypto_connected = true;
-
-			for (quux_c_impl* ctx : cconnect_interest_set) {
-				printf("############ CALLBACK\n");
-				ctx->quux_writeable(ctx);
-			}
-			cconnect_interest_set.clear();
-		}
-	}
-
-	/// exposing protected methods
-
-	void RegisterStreamPriority(net::QuicStreamId id,
-			net::SpdyPriority priority) {
-		write_blocked_streams()->RegisterStream(id, priority);
-	}
-
-	// because QuicSession::ActivateStream is protected
-	void ActivateStream(net::ReliableQuicStream* stream) override {
-		QuicSession::ActivateStream(stream);
-	}
-
-	net::QuicStreamId GetNextOutgoingStreamId() {
-		return QuicSession::GetNextOutgoingStreamId();
-	}
-
-	virtual ~Session() {
-	}
-
-	net::QuicCryptoClientStream* crypto_stream;
-	bool crypto_connected = false;
-
-	typedef std::set<quux_c_impl*> CryptoConnectInterestSet;
-	CryptoConnectInterestSet cconnect_interest_set;
-};
 
 } /* namespace client */
 

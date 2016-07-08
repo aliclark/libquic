@@ -8,8 +8,12 @@
 #ifndef SRC_QUUX_CONNECTION_H_
 #define SRC_QUUX_CONNECTION_H_
 
-#include "../net/quic/quic_connection.h"
-#include "random.h"
+#include <net/quic/quic_connection.h>
+#include <net/quic/quic_protocol.h>
+#include <net/quic/quic_time.h>
+#include <quux/random.h>
+#include <cstdio>
+#include <string>
 
 namespace quux {
 class Random;

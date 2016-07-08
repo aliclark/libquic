@@ -8,20 +8,19 @@
 #ifndef SRC_QUUX_PROOF_H_
 #define SRC_QUUX_PROOF_H_
 
+#include <base/memory/ref_counted.h>
+#include <base/strings/string_piece.h>
+#include <net/base/ip_address.h>
+#include <net/quic/crypto/proof_source.h>
+#include <net/quic/crypto/proof_verifier.h>
+#include <net/quic/crypto/quic_crypto_client_config.h>
+#include <net/quic/quic_crypto_client_stream.h>
+#include <net/quic/quic_protocol.h>
+#include <net/quic/quic_types.h>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "../base/memory/ref_counted.h"
-#include "../base/strings/string_piece.h"
-#include "../net/base/ip_address.h"
-#include "../net/quic/crypto/proof_source.h"
-#include "../net/quic/crypto/proof_verifier.h"
-#include "../net/quic/crypto/quic_crypto_client_config.h"
-#include "../net/quic/quic_crypto_client_stream.h"
-#include "../net/quic/quic_protocol.h"
-#include "../net/quic/quic_types.h"
 
 namespace quux {
 

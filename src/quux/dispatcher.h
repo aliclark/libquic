@@ -8,17 +8,18 @@
 #ifndef SRC_QUUX_DISPATCHER_H_
 #define SRC_QUUX_DISPATCHER_H_
 
-#include <cassert>
-
-#include "../net/base/ip_endpoint.h"
-#include "../net/quic/crypto/quic_crypto_server_config.h"
-#include "../net/quic/quic_alarm_factory.h"
-#include "../net/quic/quic_connection.h"
-#include "../net/quic/quic_packet_writer.h"
-#include "../net/quic/quic_protocol.h"
-#include "../net/quic/quic_server_session_base.h"
-#include "server/quic_dispatcher.h"
-#include "server.h"
+#include <net/base/ip_endpoint.h>
+#include <net/quic/crypto/quic_compressed_certs_cache.h>
+#include <net/quic/crypto/quic_crypto_server_config.h>
+#include <net/quic/quic_alarm_factory.h>
+#include <net/quic/quic_config.h>
+#include <net/quic/quic_connection.h>
+#include <net/quic/quic_packet_writer.h>
+#include <net/quic/quic_protocol.h>
+#include <net/quic/quic_server_session_base.h>
+#include <quux/connection.h>
+#include <quux/server/quic_dispatcher.h>
+#include <quux/server.h>
 
 namespace quux {
 

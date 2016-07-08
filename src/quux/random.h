@@ -8,11 +8,9 @@
 #ifndef SRC_QUUX_RANDOM_H_
 #define SRC_QUUX_RANDOM_H_
 
-#include "../crypto/random.h"
-
+#include <crypto/random.h>
+#include <net/quic/crypto/quic_random.h>
 #include <cstdint>
-
-#include "../net/quic/crypto/quic_random.h"
 
 namespace quux {
 

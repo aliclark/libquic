@@ -14,6 +14,7 @@
 #include <net/quic/quic_protocol.h>
 #include <net/quic/quic_server_id.h>
 #include <net/quic/quic_simple_buffer_allocator.h>
+#include <net/quic/quic_spdy_stream.h>
 #include <net/quic/quic_time.h>
 #include <net/quic/quic_types.h>
 #include <netinet/in.h>
@@ -25,7 +26,6 @@
 #include <quux/proof.h>
 #include <quux/random.h>
 #include <quux/server.h>
-#include <quux/stream.h>
 #include <sys/epoll.h>
 #include <sys/uio.h>
 #include <unistd.h>
@@ -57,6 +57,8 @@
  */
 
 namespace {
+
+#define EVER_AND_EVER ;;
 
 typedef const void (*cbfunc)(const net::QuicTime& approx_time, uint32_t events,
 		const void* ctx);
@@ -207,7 +209,8 @@ public:
 			out_messages[i].msg_hdr.msg_iovlen = 1;
 		}
 
-		net::QuicConnectionDebugVisitor* debug_visitor = new quux::connection::Logger();
+		net::QuicConnectionDebugVisitor* debug_visitor =
+				new quux::connection::Logger();
 		connection.set_debug_visitor(debug_visitor);
 	}
 
@@ -229,7 +232,52 @@ public:
 	struct mmsghdr out_messages[quux::client::packet::NUM_OUT_MESSAGES];
 };
 
+class quux_c_impl {
+public:
+	explicit quux_c_impl(quux_p_impl* peer, quux_cb quux_writeable,
+			quux_cb quux_readable) :
+			peer(peer), quux_writeable(quux_writeable), quux_readable(
+					quux_readable), stream(
+					quux::peer_session(peer)->GetNextOutgoingStreamId(),
+					quux::peer_session(peer), this), session(
+					quux::peer_session(peer)) {
+	}
+
+	quux_p peer;
+	quux_cb quux_writeable;
+	quux_cb quux_readable;
+	quux::client::Stream stream;
+	quux::client::Session* session;
+};
+
 namespace quux {
+
+namespace client {
+
+namespace session {
+
+void register_stream_priority(quux::client::Session* session,
+		net::QuicStreamId id) {
+	session->RegisterStreamPriority(id, net::kDefaultPriority);
+}
+void activate_stream(quux::client::Session* session,
+		quux::client::Stream* stream) {
+	session->ActivateStream(stream);
+}
+
+} // namespace session
+
+quux::client::Stream* create_stream(net::QuicStreamId id,
+		quux::client::Session* session, quux_c_impl* ctx) {
+	return new quux::client::Stream(id, session, ctx);
+}
+net::ReliableQuicStream* create_reliable_stream(net::QuicStreamId id,
+		quux::client::Session* session, quux_c_impl* ctx) {
+	return create_stream(id, session, ctx);
+}
+
+} // namespace client
+
 quux::client::Session* peer_session(quux_p_impl* peer) {
 	return &peer->session;
 }
@@ -237,9 +285,12 @@ quux::client::Session* peer_session(quux_p_impl* peer) {
 quux_cb c_readable_cb(quux_c_impl* ctx) {
 	return ctx->quux_readable;
 }
+
+quux_cb c_writeable_cb(quux_c_impl* ctx) {
+	return ctx->quux_writeable;
 }
 
-#include "quux_c.h"
+} // namespace quux
 
 namespace {
 
@@ -491,26 +542,28 @@ void quux_read_close(quux_c stream) {
 //
 // Is there any gain from doing things in passes, like timeouts have priority?
 // What does QoS mean in the context of timeouts,reads,writes?
-// We should map events to streams early, then QoS within those.
+//
+// We should map events to streams early, then QoS within those,
+// but presumably very costly to determine the stream cryptographic-ally
 void quux_loop(void) {
 	int ed = mainepolld;
 
 	base::TimeTicks approx_time_ticks(base::TimeTicks::Now());
 	int64_t approx_micros = approx_time_ticks.ToInternalValue();
 
-	for (;;) {
-		// Called *often* - incoming datagrams and timers
-		// A) Do timers
-		// B) Read *all* packets off the interfaces
+	for (EVER_AND_EVER) {
+		// Run *often*. timers, out/ingoing packets, out/ingoing app data
 
-		// The priority should be to read datagrams off sockets and ply those into the QuicConnections
+		// The aim is to read all datagrams off sockets immediately and ply those into the QuicConnections
 		// (which should promptly drop if the decrypted packet is for a stream that is already full)
-		// If a socket is constantly busy, it *should* slow down as we start dropping the packets.
+		// If a stream is constantly busy, it *should* slow down as we start dropping the packets.
 		// Otherwise, a spoofer may be sending large packets to us, but there's nothing we can do
-		// before an IP check
+		// before a (rudimentary) ip:port check
 		//
-		// This means the socket recv buffers can actually be quite small - just big enough that
-		// they won't fill in the time between loop runs. The stream buffers OTOH should be large
+		// This means that like a network card, the udp socket recv buffers can actually be quite small,
+		// just big enough that they won't fill in the time between loop runs.
+		// The internal quic stream buffers should have buffers comparable with TCP conns,
+		// eg. 8Mbit*250ms = 256KB per stream
 
 		// default to an infinite timeout if the alarm map is empty
 		int wake_after_millis = -1;

@@ -8,25 +8,28 @@
 #ifndef SRC_QUUX_SERVER_H_
 #define SRC_QUUX_SERVER_H_
 
+#include <net/base/ip_address.h>
+#include <net/base/ip_endpoint.h>
+#include <net/quic/quic_bandwidth.h>
+#include <net/quic/quic_crypto_server_stream.h>
+#include <net/quic/quic_packet_writer.h>
+#include <net/quic/quic_protocol.h>
+#include <net/quic/quic_server_session_base.h>
+#include <net/quic/quic_spdy_stream.h>
+#include <net/quic/quic_stream_sequencer.h>
+#include <net/quic/quic_types.h>
+#include <net/quic/reliable_quic_stream.h>
+#include <net/spdy/spdy_protocol.h>
 #include <stddef.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <set>
 #include <string>
 #include <utility>
-
-#include "../crypto/random.h"
-#include "../net/base/ip_address.h"
-#include "../net/base/ip_endpoint.h"
-#include "../net/quic/quic_bandwidth.h"
-#include "../net/quic/quic_crypto_server_stream.h"
-#include "../net/quic/quic_packet_writer.h"
-#include "../net/quic/quic_protocol.h"
-#include "../net/quic/quic_server_session_base.h"
-#include "../net/quic/quic_types.h"
 
 namespace quux {
 
@@ -165,7 +168,7 @@ public:
 		if (read_wanted) {
 			printf("read wanted\n");
 			read_wanted = false;
-			ctx->quux_readable(ctx);
+			quux::c_readable_cb(ctx)(ctx);
 		}
 	}
 
