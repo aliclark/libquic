@@ -23,8 +23,8 @@
 #include <quux/client.h>
 #include <quux/connection.h>
 #include <quux/dispatcher.h>
+#include <quux/isaacrandom.h>
 #include <quux/proof.h>
-#include <quux/random.h>
 #include <quux/server.h>
 #include <sys/epoll.h>
 #include <sys/uio.h>
@@ -74,23 +74,34 @@ static const base::AtExitManager exit_manager;
 static const net::QuicVersionVector supported_versions(
 		net::QuicSupportedVersions());
 
+static const net::QuicWallTime NULL_WALL_TIME = net::QuicWallTime::Zero();
+net::QuicWallTime cur_wall_time = NULL_WALL_TIME;
 static base::TimeTicks approx_time_ticks = base::TimeTicks::Now();
 
-class AClock: public net::QuicClock {
+// A QuicClock that only updates once per event loop run
+class CacheClock: public net::QuicClock {
 public:
-	AClock() {}
-
+	CacheClock() :
+			QuicClock() {
+	}
 	net::QuicTime Now() const override {
 		return net::QuicTime(approx_time_ticks);
 	}
+	net::QuicWallTime WallNow() const override {
+		if (cur_wall_time.IsZero()) {
+			// const is cheated by using a global
+			cur_wall_time = net::QuicWallTime::FromUNIXMicroseconds(
+					base::Time::Now().ToJavaTime() * 1000);
+		}
+		return cur_wall_time;
+	}
 };
 
-// TODO: make caching
-static AClock quic_clock;
-static quux::Random quux_random;
+static CacheClock quic_clock;
+static quux::IsaacRandom quux_random;
 static net::SimpleBufferAllocator buffer_allocator;
-static quux::connection::Helper helper((net::QuicClock*)&quic_clock, &quux_random,
-		&buffer_allocator);
+static quux::connection::Helper helper((net::QuicClock*) &quic_clock,
+		&quux_random, &buffer_allocator);
 
 typedef std::set<quux_conn> WritesReadySet;
 static WritesReadySet client_writes_ready_set;
@@ -107,10 +118,9 @@ static net::QuicCryptoClientConfig crypto_client_config(&proof_verifier);
 static quux::proof::Handler proof_handler;
 
 static base::StringPiece source_address_token_secret;
-static quux::Random server_nonce_entropy;
 static quux::proof::Source proof_source;
 static net::QuicCryptoServerConfig crypto_server_config(
-		source_address_token_secret, &server_nonce_entropy, &proof_source);
+		source_address_token_secret, &quux_random, &proof_source);
 
 static net::QuicConfig create_config(void) {
 	net::QuicConfig config;
@@ -202,7 +212,9 @@ public:
 					&verify_context, &crypto_client_config, &proof_handler), out_messages(
 					writer.out_messages), num(&writer.num) {
 
+#if 0
 		connection.set_debug_visitor(&debug_visitor);
+#endif
 	}
 
 	const int sd;
@@ -346,6 +358,7 @@ bool quux_init(void) {
 		listen_messages[i].msg_hdr.msg_iovlen = 1;
 	}
 
+#if 0
 	// required for logging
 	base::CommandLine::Init(0, nullptr);
 
@@ -359,6 +372,7 @@ bool quux_init(void) {
 	settings.delete_old = logging::DELETE_OLD_LOG_FILE;
 	logging::InitLogging(settings);
 	logging::SetMinLogLevel(-1);
+#endif
 
 	crypto_server_config.AddDefaultConfig(helper.GetRandomGenerator(),
 			helper.GetClock(), net::QuicCryptoServerConfig::ConfigOptions());
@@ -538,6 +552,8 @@ void quux_loop(void) {
 	approx_time_ticks = base::TimeTicks::Now();
 	int64_t approx_micros = approx_time_ticks.ToInternalValue();
 
+	// An empty loop runs in ~4 micros on my machine (~250k/s)
+	// including gettime(), epoll_wait(0ms) and printf
 	for (EVER_AND_EVER) {
 		// Run *often*. timers, out/ingoing packets, out/ingoing app data
 
@@ -625,6 +641,8 @@ void quux_loop(void) {
 		approx_time_ticks = base::TimeTicks::Now();
 		approx_micros = approx_time_ticks.ToInternalValue();
 		net::QuicTime approx_quictime(approx_time_ticks);
+		// not always needed, so let it be lazily generated later
+		cur_wall_time = NULL_WALL_TIME;
 
 		for (int i = 0; i < nReadyFDs; i++) {
 			struct cbpair* pair = (struct cbpair*) events[i].data.ptr;

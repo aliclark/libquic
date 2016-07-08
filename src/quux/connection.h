@@ -11,12 +11,12 @@
 #include <net/quic/quic_connection.h>
 #include <net/quic/quic_protocol.h>
 #include <net/quic/quic_time.h>
-#include <quux/random.h>
+#include <quux/isaacrandom.h>
 #include <cstdio>
 #include <string>
 
 namespace quux {
-class Random;
+class IsaacRandom;
 } /* namespace quux */
 
 namespace quux {
@@ -25,7 +25,7 @@ namespace connection {
 
 class Helper: public net::QuicConnectionHelperInterface {
 public:
-	explicit Helper(const net::QuicClock *clock, quux::Random* quic_random,
+	explicit Helper(const net::QuicClock *clock, quux::IsaacRandom* quic_random,
 			net::QuicBufferAllocator* buffer_allocator) :
 			clock(clock), quic_random(quic_random), buffer_allocator(
 					buffer_allocator) {
@@ -49,7 +49,7 @@ public:
 	}
 
 	const net::QuicClock* clock;
-	quux::Random* quic_random;
+	quux::IsaacRandom* quic_random;
 	net::QuicBufferAllocator* buffer_allocator;
 };
 

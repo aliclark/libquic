@@ -58,9 +58,11 @@ public:
 				client_address, helper(), alarm_factory(), &writer,
 				false, net::Perspective::IS_SERVER, GetSupportedVersions());
 
+#if 0
 		net::QuicConnectionDebugVisitor* debug_visitor =
 				new quux::connection::Logger();
 		connection->set_debug_visitor(debug_visitor);
+#endif
 
 #if 0
 		net::QuicServerSessionBase* session = new net::QuicSimpleServerSession(
