@@ -27,7 +27,6 @@ net::ReliableQuicStream* create_reliable_stream(net::QuicStreamId id,
 
 } // namespace client
 
-quux::client::Session* peer_session(quux_conn peer);
 quux_cb c_readable_cb(quux_stream ctx);
 quux_cb c_writeable_cb(quux_stream ctx);
 

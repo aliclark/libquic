@@ -51,12 +51,15 @@ public:
 	Writer(std::set<quux_listener>* writes_ready_set, quux_listener ctx) :
 			writes_ready_set(writes_ready_set), ctx(ctx) {
 
+		memset(out_messages, 0, sizeof(out_messages));
+
 		for (int i = 0; i < NUM_OUT_MESSAGES; ++i) {
 			iov[i].iov_base = (void*) &buf[net::kMaxPacketSize * i];
-			iov[i].iov_len = 0;
 
 			out_messages[i].msg_hdr.msg_iov = &iov[i];
 			out_messages[i].msg_hdr.msg_iovlen = 1;
+			out_messages[i].msg_hdr.msg_name = &out_sockaddrs[i];
+			out_messages[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
 		}
 	}
 
@@ -105,6 +108,7 @@ public:
 	uint8_t buf[net::kMaxPacketSize * NUM_OUT_MESSAGES];
 	struct iovec iov[NUM_OUT_MESSAGES];
 	struct mmsghdr out_messages[NUM_OUT_MESSAGES];
+	struct sockaddr_in out_sockaddrs[NUM_OUT_MESSAGES];
 	int num = 0;
 
 	quux_listener ctx;
@@ -151,7 +155,8 @@ public:
 
 class Stream: public net::QuicSpdyStream {
 public:
-	Stream(net::QuicStreamId id, net::QuicSpdySession* spdy_session, quux_stream ctx) :
+	Stream(net::QuicStreamId id, net::QuicSpdySession* spdy_session,
+			quux_stream ctx) :
 			QuicSpdyStream(id, spdy_session), ctx(ctx) {
 
 		// QuicSpdyStream::QuicSpdyStream set it blocked for SPDY reasons - undo that
@@ -193,6 +198,7 @@ public:
 		// FIXME: around here we can create the ctx for this stream
 		// and do quux_accept(ctx)
 
+//		quux_stream_impl* c = new quux_stream_impl(peer, quux_writeable, quux_readable);
 		quux_stream ctx = nullptr;
 
 		Stream* stream = new Stream(id, this, ctx);

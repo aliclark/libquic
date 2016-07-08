@@ -44,18 +44,18 @@ public:
 			net::ProofVerifyContext* verify_context,
 			net::QuicCryptoClientConfig* crypto_config,
 			net::QuicCryptoClientStream::ProofHandler* proof_handler) :
-			crypto_stream(
-					new net::QuicCryptoClientStream(server_id, this,
-							verify_context, crypto_config, proof_handler)), QuicSession(
-					connection, config) {
+
+			crypto_stream(server_id, this, verify_context, crypto_config,
+					proof_handler), QuicSession(connection, config), crypto_connected(
+			false) {
 
 		// XXX: dodgy virtual method call in constructor?
 		Initialize();
 		// XXX: Is it too early to do this?
-		crypto_stream->CryptoConnect();
+		crypto_stream.CryptoConnect();
 
-		// Err, I think this is needed as an ugly hack so the first stream ID
-		// isn't the reserved SPDY headers stream ID
+		// This ugly hack is needed so the first stream ID
+		// isn't the reserved SPDY headers stream ID (3)
 		GetNextOutgoingStreamId();
 	}
 
@@ -67,8 +67,7 @@ public:
 		// to us in terms of app communication
 		quux_stream ctx = nullptr;
 
-		net::ReliableQuicStream* stream = quux::client::create_reliable_stream(id, this, ctx);
-		return stream;
+		return quux::client::create_reliable_stream(id, this, ctx);
 	}
 
 	net::ReliableQuicStream* CreateOutgoingDynamicStream(
@@ -93,7 +92,7 @@ public:
 #endif
 
 	net::QuicCryptoStream* GetCryptoStream() override {
-		return crypto_stream;
+		return &crypto_stream;
 	}
 
 	void OnCryptoHandshakeEvent(CryptoHandshakeEvent event) override {
@@ -131,8 +130,8 @@ public:
 	virtual ~Session() {
 	}
 
-	net::QuicCryptoClientStream* crypto_stream;
-	bool crypto_connected = false;
+	bool crypto_connected;
+	net::QuicCryptoClientStream crypto_stream;
 
 	typedef std::set<quux_stream> CryptoConnectInterestSet;
 	CryptoConnectInterestSet cconnect_interest_set;
@@ -141,8 +140,9 @@ public:
 class Stream: public net::ReliableQuicStream {
 public:
 	// ReliableQuic(id,session) needs to know Session is a QuicSession
-	Stream(net::QuicStreamId id, quux::client::Session* session, quux_stream ctx) :
-			ReliableQuicStream(id, session), ctx(ctx) {
+	Stream(net::QuicStreamId id, quux::client::Session* session,
+			quux_stream ctx) :
+			ReliableQuicStream(id, session), ctx(ctx), read_wanted(false) {
 
 		quux::client::session::register_stream_priority(session, id);
 		quux::client::session::activate_stream(session, this);
@@ -174,8 +174,8 @@ public:
 		return sequencer()->Readv(iov, iov_len);
 	}
 
+	bool read_wanted;
 	quux_stream ctx;
-	bool read_wanted = false;
 };
 
 namespace packet {
@@ -186,11 +186,15 @@ class Writer: public net::QuicPacketWriter {
 public:
 
 	Writer(std::set<quux_conn>* writes_ready_set, quux_conn peer) :
-			writes_ready_set(writes_ready_set), peer(peer) {
+			writes_ready_set(writes_ready_set), peer(peer), num(0) {
+
+		memset(out_messages, 0, sizeof(out_messages));
 
 		for (int i = 0; i < NUM_OUT_MESSAGES; ++i) {
 			iov[i].iov_base = (void*) &buf[net::kMaxPacketSize * i];
-			iov[i].iov_len = 0;
+
+			out_messages[i].msg_hdr.msg_iov = &iov[i];
+			out_messages[i].msg_hdr.msg_iovlen = 1;
 		}
 	}
 
@@ -236,7 +240,8 @@ public:
 
 	uint8_t buf[net::kMaxPacketSize * NUM_OUT_MESSAGES];
 	struct iovec iov[NUM_OUT_MESSAGES];
-	int num = 0;
+	struct mmsghdr out_messages[NUM_OUT_MESSAGES];
+	int num;
 
 	quux_conn peer;
 	std::set<quux_conn>* writes_ready_set;

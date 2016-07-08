@@ -143,10 +143,10 @@ class quux_listener_impl {
 public:
 	explicit quux_listener_impl(int sd, const net::IPEndPoint& self_endpoint,
 			quux_cb quux_accept, quux_cb quux_writeable, quux_cb quux_readable) :
+
 			sd(sd), self_endpoint(self_endpoint), quux_accept(quux_accept), quux_writeable(
 					quux_writeable), quux_readable(quux_readable), cbp( {
-					(cbfunc) &quux_listen_cb, (const void*) this }), writer(
-					&listen_writes_ready_set, this), dispatcher(config,
+					(cbfunc) quux_listen_cb, (void*) this }), dispatcher(config,
 					&crypto_server_config, supported_versions,
 					std::unique_ptr<quux::connection::Helper>(
 							new quux::connection::Helper(&quic_clock,
@@ -154,35 +154,23 @@ public:
 					std::unique_ptr<quux::server::session::Helper>(
 							new quux::server::session::Helper()),
 					std::unique_ptr<quux::alarm::Factory>(
-							new quux::alarm::Factory(&time_to_alarm_map))) {
-
-		// necessary?
-		memset(&out_sockaddrs, 0, sizeof(out_sockaddrs));
-
-		for (int i = 0; i < quux::server::packet::NUM_OUT_MESSAGES; ++i) {
-			out_sockaddrs[i].sin_family = AF_INET;
-			writer.out_messages[i].msg_hdr.msg_name = &out_sockaddrs[i];
-			writer.out_messages[i].msg_hdr.msg_namelen =
-					sizeof(struct sockaddr_in);
-		}
-
-		dispatcher.InitializeWithWriter(&writer);
+							new quux::alarm::Factory(&time_to_alarm_map)), sd,
+					&self_endpoint, &listen_writes_ready_set, this), out_messages(
+					dispatcher.writer.out_messages), num(&dispatcher.writer.num) {
 	}
 
 	const int sd;
-
 	const net::IPEndPoint self_endpoint;
-
 	quux_cb quux_accept;
 	quux_cb quux_writeable;
 	quux_cb quux_readable;
-
 	const cbpair_t cbp;
 
-	quux::server::packet::Writer writer;
 	quux::Dispatcher dispatcher;
 
-	struct sockaddr_in out_sockaddrs[quux::server::packet::NUM_OUT_MESSAGES];
+	// handy references
+	struct mmsghdr* out_messages;
+	int* num;
 };
 
 class quux_conn_impl {
@@ -192,7 +180,7 @@ public:
 	explicit quux_conn_impl(int sd, const net::IPEndPoint& self_endpoint,
 			const net::IPEndPoint& peer_endpoint) :
 			sd(sd), self_endpoint(self_endpoint), peer_endpoint(peer_endpoint), cbp(
-					{ (cbfunc) &quux_peer_cb, (const void*) this }), writer(
+					{ (cbfunc) quux_peer_cb, (void*) this }), writer(
 					&client_writes_ready_set, this), connection(
 					net::QuicConnectionId(quux_random.RandUint64() & ~1),
 					peer_endpoint, &helper, &alarm_factory, &writer,
@@ -200,36 +188,26 @@ public:
 					&connection, config,
 					net::QuicServerId(peer_endpoint.ToStringWithoutPort(),
 							peer_endpoint.port(), net::PRIVACY_MODE_DISABLED),
-					&verify_context, &crypto_client_config, &proof_handler) {
+					&verify_context, &crypto_client_config, &proof_handler), out_messages(
+					writer.out_messages), num(&writer.num) {
 
-		memset(&out_messages, 0, sizeof(out_messages));
-
-		for (int i = 0; i < quux::client::packet::NUM_OUT_MESSAGES; ++i) {
-			out_messages[i].msg_hdr.msg_iov = &writer.iov[i];
-			out_messages[i].msg_hdr.msg_iovlen = 1;
-		}
-
-		net::QuicConnectionDebugVisitor* debug_visitor =
-				new quux::connection::Logger();
-		connection.set_debug_visitor(debug_visitor);
+		connection.set_debug_visitor(&debug_visitor);
 	}
 
 	const int sd;
-
 	const net::IPEndPoint self_endpoint;
 	const net::IPEndPoint peer_endpoint;
-
 	const cbpair_t cbp;
 
 	quux::client::packet::Writer writer;
 
-	// nb. owned by the session
-	// keep a reference to avoid an extra indirection
+	quux::connection::Logger debug_visitor;
 	net::QuicConnection connection;
-
 	quux::client::Session session;
 
-	struct mmsghdr out_messages[quux::client::packet::NUM_OUT_MESSAGES];
+	// handy references
+	struct mmsghdr* out_messages;
+	int* num;
 };
 
 class quux_stream_impl {
@@ -238,16 +216,19 @@ public:
 			quux_cb quux_readable) :
 			peer(peer), quux_writeable(quux_writeable), quux_readable(
 					quux_readable), stream(
-					quux::peer_session(peer)->GetNextOutgoingStreamId(),
-					quux::peer_session(peer), this), session(
-					quux::peer_session(peer)) {
+					peer->session.GetNextOutgoingStreamId(), &peer->session,
+					this), crypto_connected(&peer->session.crypto_connected), cconnect_interest_set(
+					&peer->session.cconnect_interest_set) {
 	}
 
 	quux_conn peer;
 	quux_cb quux_writeable;
 	quux_cb quux_readable;
 	quux::client::Stream stream;
-	quux::client::Session* session;
+
+	// handy references
+	bool *crypto_connected;
+	quux::client::Session::CryptoConnectInterestSet* cconnect_interest_set;
 };
 
 namespace quux {
@@ -278,10 +259,6 @@ net::ReliableQuicStream* create_reliable_stream(net::QuicStreamId id,
 
 } // namespace client
 
-quux::client::Session* peer_session(quux_conn peer) {
-	return &peer->session;
-}
-
 quux_cb c_readable_cb(quux_stream ctx) {
 	return ctx->quux_readable;
 }
@@ -306,7 +283,7 @@ static void quux_listen_cb(const net::QuicTime& approx_time, uint32_t events,
 	int num = recvmmsg(ctx->sd, listen_messages, NUM_MESSAGES, 0, nullptr);
 
 	for (int i = 0; i < num; ++i) {
-		net::QuicReceivedPacket packet((const char*) iov[i].iov_base,
+		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
 				listen_messages[i].msg_len, approx_time);
 		(void) peer_endpoint.FromSockAddr(
 				(struct sockaddr*) &listen_sockaddrs[i],
@@ -328,7 +305,7 @@ static void quux_peer_cb(const net::QuicTime& approx_time, uint32_t events,
 	int num = recvmmsg(ctx->sd, peer_messages, NUM_MESSAGES, 0, nullptr);
 
 	for (int i = 0; i < num; ++i) {
-		net::QuicReceivedPacket packet((const char*) iov[i].iov_base,
+		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
 				peer_messages[i].msg_len, approx_time);
 
 		connection.ProcessUdpPacket(self_endpoint, peer_endpoint, packet);
@@ -378,8 +355,8 @@ bool quux_init(void) {
 	return true;
 }
 
-quux_listener quux_listen(const struct sockaddr* self_sockaddr, quux_cb quux_accept,
-		quux_cb quux_writeable, quux_cb quux_readable) {
+quux_listener quux_listen(const struct sockaddr* self_sockaddr,
+		quux_cb quux_accept, quux_cb quux_writeable, quux_cb quux_readable) {
 
 	// Possible support for INET6 in future
 	if (self_sockaddr->sa_family != AF_INET) {
@@ -404,8 +381,8 @@ quux_listener quux_listen(const struct sockaddr* self_sockaddr, quux_cb quux_acc
 		return nullptr;
 	}
 
-	quux_listener ctx = new quux_listener_impl(sd, self_endpoint, quux_accept, quux_writeable,
-			quux_readable);
+	quux_listener ctx = new quux_listener_impl(sd, self_endpoint, quux_accept,
+			quux_writeable, quux_readable);
 
 	struct epoll_event ev = { EPOLLIN, (void*) &ctx->cbp };
 	if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
@@ -484,8 +461,8 @@ void quux_write_please(quux_stream stream) {
 
 	// TODO: register an interest on this thing I think,
 	// especially if crypto is still being established
-	if (!stream->session->crypto_connected) {
-		stream->session->cconnect_interest_set.insert(stream);
+	if (!*stream->crypto_connected) {
+		stream->cconnect_interest_set->insert(stream);
 		return;
 	}
 
@@ -494,8 +471,8 @@ void quux_write_please(quux_stream stream) {
 
 ssize_t quux_write(quux_stream stream, const struct iovec* iov) {
 
-	if (!stream->session->crypto_connected) {
-		stream->session->cconnect_interest_set.insert(stream);
+	if (!*stream->crypto_connected) {
+		stream->cconnect_interest_set->insert(stream);
 		return 0;
 	}
 
@@ -615,18 +592,16 @@ void quux_loop(void) {
 		// XXX: After this point we don't have any code that could set a timer
 
 		for (auto& peer : client_writes_ready_set) {
-			sendmmsg(peer->sd, (struct mmsghdr*) peer->out_messages,
-					peer->writer.num, 0);
+			sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
 			// XXX: for now we just drop anything that didn't successfully send
-			peer->writer.num = 0;
+			*peer->num = 0;
 		}
 		client_writes_ready_set.clear();
 
 		for (auto& ctx : listen_writes_ready_set) {
-			sendmmsg(ctx->sd, (struct mmsghdr*) ctx->writer.out_messages,
-					ctx->writer.num, 0);
+			sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
 			// XXX: for now we just drop anything that didn't successfully send
-			ctx->writer.num = 0;
+			*ctx->num = 0;
 		}
 		listen_writes_ready_set.clear();
 

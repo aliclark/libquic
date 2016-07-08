@@ -1,22 +1,21 @@
 #ifndef SRC_QUUX_API_H_
 #define SRC_QUUX_API_H_
 
-#include <sys/socket.h>
 #include <stdio.h>
 
 #ifdef __cplusplus
-class quux_stream_impl;
-class quux_conn_impl;
 class quux_listener_impl;
+class quux_conn_impl;
+class quux_stream_impl;
 typedef class quux_listener_impl* quux_listener;
-typedef class quux_stream_impl* quux_stream;
 typedef class quux_conn_impl* quux_conn;
+typedef class quux_stream_impl* quux_stream;
 extern "C" {
 
 #else
 typedef struct quux_listener_impl* quux_listener;
-typedef struct quux_stream_impl* quux_stream;
 typedef struct quux_conn_impl* quux_conn;
+typedef struct quux_stream_impl* quux_stream;
 #endif // __cplusplus
 
 typedef void (*quux_cb)(quux_stream);
@@ -43,13 +42,25 @@ bool quux_init(void);
  *
  * TODO: error if there is already a server listening on ip:port
  */
-quux_listener quux_listen(const struct sockaddr* self, quux_cb quux_accept,
+quux_listener quux_listen(const struct sockaddr* addr, quux_cb quux_accept,
 		quux_cb quux_writeable, quux_cb quux_readable);
 
 /**
  * A handle representing an IPv4 connection to the peer
  */
-quux_conn quux_peer(const struct sockaddr* peer);
+quux_conn quux_peer(const struct sockaddr* addr);
+
+// XXX: missing API:
+// quux_conn quux_stream_peer(quux_stream stream);
+//
+// Would allow the listener to create new outgoing streams to the client
+// Alternatively, we could pass quux_conn as an additional argument to quux_accept
+
+// XXX: missing API:
+// quux_listener quux_peer_listen(quux_conn peer, quux_cb quux_accept,
+//                                                quux_cb quux_writeable, quux_cb quux_readable);
+//
+// Would allow the client to accept new incoming streams from the server
 
 /**
  * Create a new stream with the peer

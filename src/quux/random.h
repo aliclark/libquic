@@ -34,7 +34,7 @@ public:
 		return value;
 #endif
 
-		return cur+2;
+		return (cur++) +2;
 	}
 
 	void Reseed(const void* additional_entropy, size_t entropy_len) override {
