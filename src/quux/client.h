@@ -58,13 +58,11 @@ public:
 
 	net::ReliableQuicStream* CreateIncomingDynamicStream(net::QuicStreamId id)
 			override {
-		printf("CreateIncomingDynamicStream(%d)\n", id);
 
 		// XXX: at the moment we ignore the server end opening a connection
 		// to us in terms of app communication
-		quux_stream ctx = nullptr;
-
-		return quux::client::create_reliable_stream(id, this, ctx);
+		assert(0);
+		return nullptr;
 	}
 
 	net::ReliableQuicStream* CreateOutgoingDynamicStream(
@@ -125,8 +123,6 @@ public:
 	}
 
 	void OnDataAvailable() override {
-		printf("quux::client::Stream::OnDataAvailable\n");
-
 		if (read_wanted) {
 			read_wanted = false;
 			quux::c_readable_cb(ctx)(ctx);

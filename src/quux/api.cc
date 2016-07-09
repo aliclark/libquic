@@ -149,12 +149,6 @@ static void quux_listen_cb(const net::QuicTime& approx_time, uint32_t events,
 static void quux_peer_cb(const net::QuicTime& approx_time, uint32_t events,
 		quux_conn ctx);
 
-typedef std::set<quux_stream> WritesInterestSet;
-static WritesInterestSet writes_interest_set;
-
-typedef std::set<quux_stream> ReadsInterestSet;
-static ReadsInterestSet reads_interest_set;
-
 } // namespace
 
 class quux_listener_impl {
@@ -235,10 +229,13 @@ public:
 	enum Type {
 		SERVER, CLIENT
 	};
-	explicit quux_stream_impl(Type type, bool *crypto_connected,
-			quux::CryptoConnectInterestSet* cconnect_interest_set) :
-			type(type), read_wanted(false), crypto_connected(crypto_connected), cconnect_interest_set(
-					cconnect_interest_set) {
+	explicit quux_stream_impl(Type type, quux_cb quux_writeable,
+			quux_cb quux_readable, bool *crypto_connected,
+			quux::CryptoConnectInterestSet* cconnect_interest_set,
+			bool* read_wanted) :
+			type(type), quux_writeable(quux_writeable), quux_readable(
+					quux_readable), crypto_connected(crypto_connected), cconnect_interest_set(
+					cconnect_interest_set), read_wanted(read_wanted) {
 	}
 
 	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
@@ -250,22 +247,25 @@ public:
 
 	Type type;
 
-	bool read_wanted;
+	quux_cb quux_writeable;
+	quux_cb quux_readable;
 
 	// handy references
 	bool *crypto_connected;
 	quux::CryptoConnectInterestSet* cconnect_interest_set;
+
+	bool* read_wanted;
 };
 
 class quux_stream_client_impl: public quux_stream_impl {
 public:
 	explicit quux_stream_client_impl(quux_conn peer, quux_cb quux_writeable,
 			quux_cb quux_readable) :
-			quux_stream_impl(Type::CLIENT, &peer->session.crypto_connected,
-					&peer->session.cconnect_interest_set), peer(peer), quux_writeable(
-					quux_writeable), quux_readable(quux_readable), stream(
-					peer->session.GetNextOutgoingStreamId(), &peer->session,
-					this) {
+			quux_stream_impl(Type::CLIENT, quux_writeable, quux_readable,
+					&peer->session.crypto_connected,
+					&peer->session.cconnect_interest_set, &stream.read_wanted), peer(
+					peer), stream(peer->session.GetNextOutgoingStreamId(),
+					&peer->session, this) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
@@ -276,23 +276,32 @@ public:
 	}
 
 	quux_conn peer;
-	quux_cb quux_writeable;
-	quux_cb quux_readable;
 	quux::client::Stream stream;
 };
 
 class quux_stream_server_impl: public quux_stream_impl {
 public:
-	explicit quux_stream_server_impl() :
-			quux_stream_impl(Type::SERVER, nullptr, nullptr) {
+	explicit quux_stream_server_impl(net::QuicStreamId id,
+			quux::server::Session* session) :
+			quux_stream_impl(Type::SERVER,
+					session->listener_ctx->quux_writeable,
+					session->listener_ctx->quux_readable,
+					&server_crypto_connected, &server_cconnect_interest_set,
+					&stream.read_wanted), stream(id, session, this) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
-		return net::QuicConsumedData(0, false);
+		return stream.WritevData(iov, 1, false, nullptr);
 	}
 	int Readv(const struct iovec* iov) override {
-		return 0;
+		return stream.Readv(iov, 1);
 	}
+
+	// crypto is necessarily already set up for server streams
+	bool server_crypto_connected = true;
+	quux::CryptoConnectInterestSet server_cconnect_interest_set;
+
+	quux::server::Stream stream;
 };
 
 namespace quux {
@@ -334,24 +343,29 @@ void activate_stream(quux::server::Session* session,
 
 } // namespace session
 
-quux::server::Stream* create_stream(net::QuicStreamId id,
-		quux::server::Session* session, quux_stream ctx) {
-	return new quux::server::Stream(id, session, ctx);
+quux_stream_impl* create_stream_context(net::QuicStreamId id,
+		quux::server::Session* session) {
+	return new quux_stream_server_impl(id, session);
 }
-net::QuicSpdyStream* create_spdy_stream(net::QuicStreamId id,
-		quux::server::Session* session, quux_stream ctx) {
-	return create_stream(id, session, ctx);
+net::QuicSpdyStream* get_spdy_stream(quux_stream ctx) {
+	if (ctx->type != quux_stream_impl::SERVER) {
+		assert(0);
+		return nullptr;
+	}
+	quux_stream_server_impl* server = (quux_stream_server_impl*) ctx;
+	return &server->stream;
 }
 
 } // namespace server
 
 quux_cb c_readable_cb(quux_stream ctx) {
-	quux_stream_client_impl* client = (quux_stream_client_impl*) ctx;
-	return client->quux_readable;
+	return ctx->quux_readable;
 }
 quux_cb c_writeable_cb(quux_stream ctx) {
-	quux_stream_client_impl* client = (quux_stream_client_impl*) ctx;
-	return client->quux_writeable;
+	return ctx->quux_writeable;
+}
+quux_cb listener_accept_cb(quux_listener ctx) {
+	return ctx->quux_accept;
 }
 
 } // namespace quux
@@ -544,15 +558,16 @@ quux_stream quux_connect(quux_conn peer, quux_cb quux_writeable,
 }
 
 void quux_write_please(quux_stream stream) {
-
-	// TODO: register an interest on this thing I think,
-	// especially if crypto is still being established
 	if (!*stream->crypto_connected) {
 		stream->cconnect_interest_set->insert(stream);
 		return;
 	}
 
-	// TODO: interest for a connected stream
+	// FIXME: If we already think the stream is writeable, callback immediately,
+	// else just set write_wanted without callback
+	//*stream->write_wanted = true;
+
+	stream->quux_writeable(stream);
 }
 
 ssize_t quux_write(quux_stream stream, const struct iovec* iov) {
@@ -579,15 +594,18 @@ void quux_write_close(quux_stream stream) {
 
 void quux_read_please(quux_stream stream) {
 
-	stream->read_wanted = true;
-	reads_interest_set.insert(stream);
+	// FIXME: If we already think the stream is readable, callback immediately,
+	// else just set read_wanted without doing the callback
+	//*stream->read_wanted = true;
+
+	stream->quux_readable(stream);
 }
 
 ssize_t quux_read(quux_stream stream, struct iovec* iov) {
 	int data_read = stream->Readv(iov);
 	if (data_read == 0) {
 		// re-register an interest in reading
-		stream->read_wanted = true;
+		*stream->read_wanted = true;
 	}
 	return data_read;
 }
@@ -706,20 +724,6 @@ void quux_loop(void) {
 			struct cbpair* pair = (struct cbpair*) events[i].data.ptr;
 			pair->callback(approx_quictime, events[i].events, pair->ctx);
 		}
-
-		// TODO: null cbs: things we know are readable but the caller has done
-		// write_please()/read_please() anyway, we need to give another call back
-
-		for (auto& peer : reads_interest_set) {
-			// TODO: if incoming data is now available to the application, do read callbacks
-		}
-		reads_interest_set.clear();
-
-		for (auto& peer : writes_interest_set) {
-			// TODO: if there is now enough buffer space for the application
-			// to add more data for send, do write callbacks
-		}
-		writes_interest_set.clear();
 	}
 }
 

@@ -154,13 +154,9 @@ public:
 	net::QuicSpdyStream* CreateIncomingDynamicStream(net::QuicStreamId id)
 			override {
 
-		// FIXME: around here we can create the ctx for this stream
-		// and do quux_accept(ctx)
-
-//		quux_stream_impl* c = new quux_stream_impl(peer, quux_writeable, quux_readable);
-		quux_stream ctx = nullptr;
-
-		return quux::server::create_spdy_stream(id, this, ctx);
+		quux_stream ctx = quux::server::create_stream_context(id, this);
+		quux::listener_accept_cb(listener_ctx)(ctx);
+		return quux::server::get_spdy_stream(ctx);
 	}
 
 	net::QuicSpdyStream* CreateOutgoingDynamicStream(net::SpdyPriority priority)
@@ -186,30 +182,36 @@ public:
 	quux_listener listener_ctx;
 };
 
+// FIXME: hack at the QuicDispatcher to make it not depend on SPDY :(
 class Stream: public net::QuicSpdyStream {
 public:
 	Stream(net::QuicStreamId id, quux::server::Session* spdy_session,
 			quux_stream ctx) :
 			QuicSpdyStream(id, spdy_session), ctx(ctx), read_wanted(false) {
 
-		// QuicSpdyStream::QuicSpdyStream set it blocked for SPDY reasons - undo that
-		sequencer()->SetUnblocked();
-		// QuicSpdyStream() already registered stream priority for us
+		// nb. QuicSpdyStream() already registered stream priority for us
 		quux::server::session::activate_stream(spdy_session, this);
+
+		// QuicSpdyStream() set sequencer() blocked for headers,
+		// but on MarkHeadersConsumed(0) it will be set unblocked again
+		OnInitialHeadersComplete(false, 0);
+		MarkHeadersConsumed(0);
 	}
 
-	virtual void OnStreamFrame(const net::QuicStreamFrame& frame) override {
-		QuicSpdyStream::OnStreamFrame(frame);
-	}
-
-	virtual void OnDataAvailable() override {
-		printf("quux::server::Stream::OnDataAvailable\n");
-
+	void OnDataAvailable() override {
 		if (read_wanted) {
-			printf("quux::server::Stream::OnDataAvailable read_wanted\n");
 			read_wanted = false;
 			quux::c_readable_cb(ctx)(ctx);
 		}
+	}
+
+	// ReliableQuicStream::WritevData is protected,
+	// so this can be used to write to it instead
+	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
+	bool fin, net::QuicAckListenerInterface* ack_listener) {
+
+		return net::ReliableQuicStream::WritevData(iov, iov_count, fin,
+				ack_listener);
 	}
 
 	quux_stream ctx;

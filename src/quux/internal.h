@@ -41,15 +41,15 @@ void activate_stream(quux::server::Session* session,
 
 } // namespace session
 
-quux::server::Stream* create_stream(net::QuicStreamId id,
-		quux::server::Session* session, quux_stream ctx);
-net::QuicSpdyStream* create_spdy_stream(net::QuicStreamId id,
-		quux::server::Session* session, quux_stream ctx);
+quux_stream create_stream_context(net::QuicStreamId id,
+		quux::server::Session* session);
+net::QuicSpdyStream* get_spdy_stream(quux_stream server);
 
 } // namespace server
 
 quux_cb c_readable_cb(quux_stream ctx);
 quux_cb c_writeable_cb(quux_stream ctx);
+quux_cb listener_accept_cb(quux_listener ctx);
 
 } // namespace quux
 
