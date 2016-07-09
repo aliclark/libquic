@@ -28,7 +28,7 @@ namespace proof {
 
 class Source: public net::ProofSource {
 public:
-	Source() {
+	Source(): ProofSource() {
 		certs.push_back("cert1");
 		chain = new net::ProofSource::Chain(certs);
 	}
@@ -45,9 +45,6 @@ public:
 		return true;
 	}
 
-	virtual ~Source() {
-	}
-
 	std::vector<std::string> certs;
 	scoped_refptr<ProofSource::Chain> chain;
 	std::string signed_certificate_timestamp = "sc_timestamp";
@@ -55,9 +52,6 @@ public:
 
 class Verifier: public net::ProofVerifier {
 public:
-	Verifier() {
-	}
-
 	net::QuicAsyncStatus VerifyProof(const std::string& hostname,
 			const uint16_t port, const std::string& server_config,
 			net::QuicVersion quic_version, base::StringPiece chlo_hash,
@@ -70,24 +64,15 @@ public:
 		// sure whatever
 		return net::QuicAsyncStatus::QUIC_SUCCESS;
 	}
-
-	virtual ~Verifier() {
-	}
 };
 
 class Handler: public net::QuicCryptoClientStream::ProofHandler {
 public:
-	Handler() {
-	}
-
 	void OnProofValid(const net::QuicCryptoClientConfig::CachedState& cached)
 			override {
 	}
 	void OnProofVerifyDetailsAvailable(
 			const net::ProofVerifyDetails& verify_details) override {
-	}
-
-	virtual ~Handler() {
 	}
 };
 

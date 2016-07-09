@@ -25,7 +25,8 @@ class Alarm: public net::QuicAlarm {
 public:
 	explicit Alarm(net::QuicArenaScopedPtr<Delegate> delegate,
 			std::multimap<int64_t, Alarm*>* alarm_time_map) :
-			alarm_time_map(alarm_time_map), QuicAlarm(std::move(delegate)) {
+			QuicAlarm(std::move(delegate)), alarm_time_map(alarm_time_map), gogogo(
+			true) {
 	}
 
 	void SetImpl() override {
@@ -47,23 +48,23 @@ public:
 		QuicAlarm::Fire();
 	}
 
-	virtual ~Alarm() {
-	}
-
 	std::multimap<int64_t, Alarm*>* alarm_time_map;
-	bool gogogo = true;
+
+	bool gogogo;
 };
 
 namespace alarm {
 
 class Factory: public net::QuicAlarmFactory {
 public:
-	Factory(std::multimap<int64_t, Alarm*>* alarm_time_map) : alarm_time_map(alarm_time_map) {
+	Factory(std::multimap<int64_t, Alarm*>* alarm_time_map) :
+			QuicAlarmFactory(), alarm_time_map(alarm_time_map) {
 	}
 
 	net::QuicAlarm* CreateAlarm(net::QuicAlarm::Delegate* delegate) override {
 		return new Alarm(
-				net::QuicArenaScopedPtr<net::QuicAlarm::Delegate>(delegate), alarm_time_map);
+				net::QuicArenaScopedPtr<net::QuicAlarm::Delegate>(delegate),
+				alarm_time_map);
 	}
 
 	net::QuicArenaScopedPtr<net::QuicAlarm> CreateAlarm(
@@ -74,10 +75,6 @@ public:
 		}
 		return net::QuicArenaScopedPtr<net::QuicAlarm>(
 				new Alarm(std::move(delegate), alarm_time_map));
-	}
-
-	virtual ~Factory() {
-
 	}
 
 	std::multimap<int64_t, Alarm*>* alarm_time_map;

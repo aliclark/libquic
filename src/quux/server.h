@@ -47,7 +47,6 @@ static const int NUM_OUT_MESSAGES = 256;
  */
 class Writer: public net::QuicPacketWriter {
 public:
-
 	Writer(std::set<quux_listener>* writes_ready_set, quux_listener ctx) :
 			writes_ready_set(writes_ready_set), ctx(ctx) {
 
@@ -102,9 +101,6 @@ public:
 		return net::kMaxPacketSize;
 	}
 
-	virtual ~Writer() {
-	}
-
 	uint8_t buf[net::kMaxPacketSize * NUM_OUT_MESSAGES];
 	struct iovec iov[NUM_OUT_MESSAGES];
 	struct mmsghdr out_messages[NUM_OUT_MESSAGES];
@@ -121,17 +117,9 @@ namespace session {
 
 class Helper: public net::QuicServerSessionBase::Helper {
 public:
-	Helper() {
-	}
-
 	// Is it OK for this to be deterministic? I assume so given the param
 	net::QuicConnectionId GenerateConnectionIdForReject(
 			net::QuicConnectionId connection_id) const override {
-#if 0
-
-		uint64_t value;
-		crypto::RandBytes(&value, sizeof(value));
-#endif
 
 		// valid by ensuring elsewhere that connection_id%2==0.
 		// fast but quite wasteful of id space
@@ -145,50 +133,21 @@ public:
 		// XXX: ming
 		return true;
 	}
-
-	virtual ~Helper() {
-	}
-
 };
 
 } /* namespace session */
-
-class Stream: public net::QuicSpdyStream {
-public:
-	Stream(net::QuicStreamId id, net::QuicSpdySession* spdy_session,
-			quux_stream ctx) :
-			QuicSpdyStream(id, spdy_session), ctx(ctx) {
-
-		// QuicSpdyStream::QuicSpdyStream set it blocked for SPDY reasons - undo that
-		sequencer()->SetUnblocked();
-	}
-
-	virtual void OnStreamFrame(const net::QuicStreamFrame& frame) override {
-		QuicSpdyStream::OnStreamFrame(frame);
-	}
-
-	virtual void OnDataAvailable() override {
-		printf("quux::server::Stream::OnDataAvailable\n");
-
-		if (read_wanted) {
-			printf("read wanted\n");
-			read_wanted = false;
-			quux::c_readable_cb(ctx)(ctx);
-		}
-	}
-
-	quux_stream ctx;
-	bool read_wanted = false;
-};
 
 class Session: public net::QuicServerSessionBase {
 public:
 	explicit Session(const net::QuicConfig& config,
 			net::QuicConnection* connection, Visitor* visitor, Helper* helper,
 			const net::QuicCryptoServerConfig* crypto_config,
-			net::QuicCompressedCertsCache* compressed_certs_cache) :
+			net::QuicCompressedCertsCache* compressed_certs_cache,
+			quux_listener listener_ctx) :
 			QuicServerSessionBase(config, connection, visitor, helper,
-					crypto_config, compressed_certs_cache) {
+					crypto_config, compressed_certs_cache), listener_ctx(
+					listener_ctx) {
+
 		Initialize();
 	}
 
@@ -201,17 +160,12 @@ public:
 //		quux_stream_impl* c = new quux_stream_impl(peer, quux_writeable, quux_readable);
 		quux_stream ctx = nullptr;
 
-		Stream* stream = new Stream(id, this, ctx);
-		ActivateStream(stream);
-
-		return stream;
+		return quux::server::create_spdy_stream(id, this, ctx);
 	}
 
 	net::QuicSpdyStream* CreateOutgoingDynamicStream(net::SpdyPriority priority)
 			override {
 		assert(0);
-		printf("CreateOutgoingDynamicStream(%d)\n", priority);
-
 		return nullptr;
 	}
 
@@ -224,8 +178,43 @@ public:
 				false, this);
 	}
 
-	virtual ~Session() {
+	// because QuicSession::ActivateStream is protected
+	void ActivateStream(net::ReliableQuicStream* stream) override {
+		QuicSession::ActivateStream(stream);
 	}
+
+	quux_listener listener_ctx;
+};
+
+class Stream: public net::QuicSpdyStream {
+public:
+	Stream(net::QuicStreamId id, quux::server::Session* spdy_session,
+			quux_stream ctx) :
+			QuicSpdyStream(id, spdy_session), ctx(ctx), read_wanted(false) {
+
+		// QuicSpdyStream::QuicSpdyStream set it blocked for SPDY reasons - undo that
+		sequencer()->SetUnblocked();
+		// QuicSpdyStream() already registered stream priority for us
+		quux::server::session::activate_stream(spdy_session, this);
+	}
+
+	virtual void OnStreamFrame(const net::QuicStreamFrame& frame) override {
+		QuicSpdyStream::OnStreamFrame(frame);
+	}
+
+	virtual void OnDataAvailable() override {
+		printf("quux::server::Stream::OnDataAvailable\n");
+
+		if (read_wanted) {
+			printf("quux::server::Stream::OnDataAvailable read_wanted\n");
+			read_wanted = false;
+			quux::c_readable_cb(ctx)(ctx);
+		}
+	}
+
+	quux_stream ctx;
+
+	bool read_wanted;
 };
 
 } /* namespace server */

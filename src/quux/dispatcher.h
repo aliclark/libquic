@@ -41,10 +41,10 @@ public:
 			const net::IPEndPoint* self_endpoint,
 			std::set<quux_listener>* writes_ready_set, quux_listener ctx) :
 
-			sd(sd), self_endpoint(self_endpoint), writer(writes_ready_set, ctx), QuicDispatcher(
-					config, crypto_config, supported_versions,
+			QuicDispatcher(config, crypto_config, supported_versions,
 					std::move(helper), std::move(session_helper),
-					std::move(alarm_factory)) {
+					std::move(alarm_factory)), sd(sd), self_endpoint(
+					self_endpoint), ctx(ctx), writer(writes_ready_set, ctx) {
 
 		InitializeWithWriter(&writer);
 	}
@@ -59,15 +59,8 @@ public:
 				false, net::Perspective::IS_SERVER, GetSupportedVersions());
 
 #if 0
-		net::QuicConnectionDebugVisitor* debug_visitor =
-				new quux::connection::Logger();
+		net::QuicConnectionDebugVisitor* debug_visitor = new quux::connection::Logger();
 		connection->set_debug_visitor(debug_visitor);
-#endif
-
-#if 0
-		net::QuicServerSessionBase* session = new net::QuicSimpleServerSession(
-				config_, connection, this, session_helper_.get(),
-				crypto_config_, &compressed_certs_cache_);
 #endif
 
 		// should know both of these
@@ -77,17 +70,14 @@ public:
 
 		net::QuicServerSessionBase* session = new quux::server::Session(
 				config(), connection, this, session_helper(), crypto_config(),
-				compressed_certs_cache());
+				compressed_certs_cache(), ctx);
 
 		return session;
 	}
 
-	virtual ~Dispatcher() {
-		// TODO Auto-generated destructor stub
-	}
-
 	const int sd;
 	const net::IPEndPoint* self_endpoint;
+	quux_listener ctx;
 
 	quux::server::packet::Writer writer;
 };

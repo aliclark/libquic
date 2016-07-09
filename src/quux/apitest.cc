@@ -5,10 +5,10 @@
 #include <cstdint>
 
 void server_accept(quux_stream stream) {
-	printf("################ quux_server_accept\n");
+	printf("server_accept\n");
 }
 void server_readable(quux_stream stream) {
-	printf("################## quux_server_readable\n");
+	printf("server_readable\n");
 
 	const size_t buflen = 8192;
 	uint8_t buf[buflen];
@@ -20,15 +20,17 @@ void server_readable(quux_stream stream) {
 	printf("received: \"%s\"\n", buf);
 }
 void server_writeable(quux_stream stream) {
+	printf("server_writeable\n");
 }
 
 void client_writeable(quux_stream stream) {
-	printf("################## quux_client_writeable\n");
+	printf("client_writeable\n");
 	const uint8_t hello[] = { 'h', 'e', 'l', 'l', 'o', '!', '\n' };
 	struct iovec iovec = { (void*) hello, 7 };
 	quux_write(stream, &iovec);
 }
 void client_readable(quux_stream stream) {
+	printf("client_readable\n");
 }
 
 int main(int argc, char** argv) {
@@ -47,6 +49,7 @@ int main(int argc, char** argv) {
 				server_readable);
 	}
 
+	printf("quux_loop()\n");
 	quux_loop();
 
 	return 0;

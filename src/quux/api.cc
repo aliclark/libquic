@@ -61,11 +61,11 @@ namespace {
 #define EVER_AND_EVER ;;
 
 typedef const void (*cbfunc)(const net::QuicTime& approx_time, uint32_t events,
-		const void* ctx);
+		void* ctx);
 
 typedef struct cbpair {
 	cbfunc callback;
-	const void* ctx;
+	void* ctx;
 } cbpair_t;
 
 // Ming. Used by common_cert_sets(CommonCertSets::GetInstanceQUIC()) at least
@@ -81,9 +81,6 @@ static base::TimeTicks approx_time_ticks = base::TimeTicks::Now();
 // A QuicClock that only updates once per event loop run
 class CacheClock: public net::QuicClock {
 public:
-	CacheClock() :
-			QuicClock() {
-	}
 	net::QuicTime Now() const override {
 		return net::QuicTime(approx_time_ticks);
 	}
@@ -235,23 +232,67 @@ public:
 
 class quux_stream_impl {
 public:
-	explicit quux_stream_impl(quux_conn peer, quux_cb quux_writeable,
+	enum Type {
+		SERVER, CLIENT
+	};
+	explicit quux_stream_impl(Type type, bool *crypto_connected,
+			quux::CryptoConnectInterestSet* cconnect_interest_set) :
+			type(type), read_wanted(false), crypto_connected(crypto_connected), cconnect_interest_set(
+					cconnect_interest_set) {
+	}
+
+	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
+
+	virtual int Readv(const struct iovec* iov) = 0;
+
+	virtual ~quux_stream_impl() {
+	}
+
+	Type type;
+
+	bool read_wanted;
+
+	// handy references
+	bool *crypto_connected;
+	quux::CryptoConnectInterestSet* cconnect_interest_set;
+};
+
+class quux_stream_client_impl: public quux_stream_impl {
+public:
+	explicit quux_stream_client_impl(quux_conn peer, quux_cb quux_writeable,
 			quux_cb quux_readable) :
-			peer(peer), quux_writeable(quux_writeable), quux_readable(
-					quux_readable), stream(
+			quux_stream_impl(Type::CLIENT, &peer->session.crypto_connected,
+					&peer->session.cconnect_interest_set), peer(peer), quux_writeable(
+					quux_writeable), quux_readable(quux_readable), stream(
 					peer->session.GetNextOutgoingStreamId(), &peer->session,
-					this), crypto_connected(&peer->session.crypto_connected), cconnect_interest_set(
-					&peer->session.cconnect_interest_set) {
+					this) {
+	}
+
+	net::QuicConsumedData WritevData(const struct iovec* iov) override {
+		return stream.WritevData(iov, 1, false, nullptr);
+	}
+	int Readv(const struct iovec* iov) override {
+		return stream.Readv(iov, 1);
 	}
 
 	quux_conn peer;
 	quux_cb quux_writeable;
 	quux_cb quux_readable;
 	quux::client::Stream stream;
+};
 
-	// handy references
-	bool *crypto_connected;
-	quux::client::Session::CryptoConnectInterestSet* cconnect_interest_set;
+class quux_stream_server_impl: public quux_stream_impl {
+public:
+	explicit quux_stream_server_impl() :
+			quux_stream_impl(Type::SERVER, nullptr, nullptr) {
+	}
+
+	net::QuicConsumedData WritevData(const struct iovec* iov) override {
+		return net::QuicConsumedData(0, false);
+	}
+	int Readv(const struct iovec* iov) override {
+		return 0;
+	}
 };
 
 namespace quux {
@@ -282,11 +323,35 @@ net::ReliableQuicStream* create_reliable_stream(net::QuicStreamId id,
 
 } // namespace client
 
+namespace server {
+
+namespace session {
+
+void activate_stream(quux::server::Session* session,
+		quux::server::Stream* stream) {
+	session->ActivateStream(stream);
+}
+
+} // namespace session
+
+quux::server::Stream* create_stream(net::QuicStreamId id,
+		quux::server::Session* session, quux_stream ctx) {
+	return new quux::server::Stream(id, session, ctx);
+}
+net::QuicSpdyStream* create_spdy_stream(net::QuicStreamId id,
+		quux::server::Session* session, quux_stream ctx) {
+	return create_stream(id, session, ctx);
+}
+
+} // namespace server
+
 quux_cb c_readable_cb(quux_stream ctx) {
-	return ctx->quux_readable;
+	quux_stream_client_impl* client = (quux_stream_client_impl*) ctx;
+	return client->quux_readable;
 }
 quux_cb c_writeable_cb(quux_stream ctx) {
-	return ctx->quux_writeable;
+	quux_stream_client_impl* client = (quux_stream_client_impl*) ctx;
+	return client->quux_writeable;
 }
 
 } // namespace quux
@@ -296,9 +361,7 @@ namespace {
 // Called *often*
 static void quux_listen_cb(const net::QuicTime& approx_time, uint32_t events,
 		quux_listener ctx) {
-	printf("quux_listen_cb %d %p\n", events, ctx);
 
-	// FIXME: doesn't this need a dispatcher to the write connection?
 	quux::Dispatcher& dispatcher = ctx->dispatcher;
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	net::IPEndPoint peer_endpoint;
@@ -318,8 +381,6 @@ static void quux_listen_cb(const net::QuicTime& approx_time, uint32_t events,
 // Called *often*
 static void quux_peer_cb(const net::QuicTime& approx_time, uint32_t events,
 		quux_conn ctx) {
-
-	printf("quux_peer_cb %d %p\n", events, ctx);
 
 	net::QuicConnection& connection = ctx->connection;
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
@@ -479,7 +540,7 @@ quux_conn quux_peer(const struct sockaddr* peer_sockaddr) {
 quux_stream quux_connect(quux_conn peer, quux_cb quux_writeable,
 		quux_cb quux_readable) {
 
-	return new quux_stream_impl(peer, quux_writeable, quux_readable);
+	return new quux_stream_client_impl(peer, quux_writeable, quux_readable);
 }
 
 void quux_write_please(quux_stream stream) {
@@ -495,16 +556,12 @@ void quux_write_please(quux_stream stream) {
 }
 
 ssize_t quux_write(quux_stream stream, const struct iovec* iov) {
-
 	if (!*stream->crypto_connected) {
 		stream->cconnect_interest_set->insert(stream);
 		return 0;
 	}
 
-	bool fin = false;
-	net::QuicAckListenerInterface* ack_listener = nullptr;
-	net::QuicConsumedData consumed(
-			stream->stream.WritevData(iov, 1, fin, ack_listener));
+	net::QuicConsumedData consumed(stream->WritevData(iov));
 
 	if (consumed.bytes_consumed == 0) {
 		// FIXME: add a callback for the flow controller and whatever
@@ -522,14 +579,15 @@ void quux_write_close(quux_stream stream) {
 
 void quux_read_please(quux_stream stream) {
 
+	stream->read_wanted = true;
 	reads_interest_set.insert(stream);
 }
 
 ssize_t quux_read(quux_stream stream, struct iovec* iov) {
-	int data_read = stream->stream.Readv(iov, 1);
+	int data_read = stream->Readv(iov);
 	if (data_read == 0) {
 		// re-register an interest in reading
-		stream->stream.read_wanted = true;
+		stream->read_wanted = true;
 	}
 	return data_read;
 }

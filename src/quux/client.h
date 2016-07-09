@@ -38,20 +38,17 @@ namespace client {
 
 class Session: public net::QuicSession {
 public:
-
 	Session(net::QuicConnection* connection, const net::QuicConfig& config,
 			const net::QuicServerId& server_id,
 			net::ProofVerifyContext* verify_context,
 			net::QuicCryptoClientConfig* crypto_config,
 			net::QuicCryptoClientStream::ProofHandler* proof_handler) :
 
-			crypto_stream(server_id, this, verify_context, crypto_config,
-					proof_handler), QuicSession(connection, config), crypto_connected(
+			QuicSession(connection, config), crypto_stream(server_id, this,
+					verify_context, crypto_config, proof_handler), crypto_connected(
 			false) {
 
-		// XXX: dodgy virtual method call in constructor?
 		Initialize();
-		// XXX: Is it too early to do this?
 		crypto_stream.CryptoConnect();
 
 		// This ugly hack is needed so the first stream ID
@@ -73,23 +70,8 @@ public:
 	net::ReliableQuicStream* CreateOutgoingDynamicStream(
 			net::SpdyPriority priority) override {
 		assert(0);
-		printf("CreateOutgoingDynamicStream(%d)\n", priority);
-
 		return nullptr;
 	}
-
-#if 0
-	// Nb. not override, because we are returning quux::Stream* instead.
-	// Since we appear to be the only users of the method we could ignore it
-	// and do our own thing instead, but it doesn't matter anyway
-	quux::Stream* CreateOutgoingDynamicStream(net::SpdyPriority priority) {
-		uint32_t value;
-		crypto::RandBytes(&value, sizeof(value));
-		net::QuicStreamId id(value);
-		quux::Stream* stream = new Stream(id, this);
-		return stream;
-	}
-#endif
 
 	net::QuicCryptoStream* GetCryptoStream() override {
 		return &crypto_stream;
@@ -97,14 +79,11 @@ public:
 
 	void OnCryptoHandshakeEvent(CryptoHandshakeEvent event) override {
 		QuicSession::OnCryptoHandshakeEvent(event);
-		printf("############ OnCryptoHandshakeEvent %d\n", event);
 
 		if (!crypto_connected) {
-			printf("############ ENCRYPTION_ESTABLISHED\n");
 			crypto_connected = true;
 
 			for (quux_stream ctx : cconnect_interest_set) {
-				printf("############ CALLBACK\n");
 				quux::c_writeable_cb(ctx)(ctx);
 			}
 			cconnect_interest_set.clear();
@@ -127,13 +106,10 @@ public:
 		return QuicSession::GetNextOutgoingStreamId();
 	}
 
-	virtual ~Session() {
-	}
-
-	bool crypto_connected;
 	net::QuicCryptoClientStream crypto_stream;
 
-	typedef std::set<quux_stream> CryptoConnectInterestSet;
+	bool crypto_connected;
+
 	CryptoConnectInterestSet cconnect_interest_set;
 };
 
@@ -166,16 +142,14 @@ public:
 				ack_listener);
 	}
 
-	virtual ~Stream() {
-	}
-
 	// access to protected stuff
 	int Readv(const struct iovec* iov, size_t iov_len) {
 		return sequencer()->Readv(iov, iov_len);
 	}
 
-	bool read_wanted;
 	quux_stream ctx;
+
+	bool read_wanted;
 };
 
 namespace packet {
@@ -184,9 +158,9 @@ static const int NUM_OUT_MESSAGES = 256;
 
 class Writer: public net::QuicPacketWriter {
 public:
-
 	Writer(std::set<quux_conn>* writes_ready_set, quux_conn peer) :
-			writes_ready_set(writes_ready_set), peer(peer), num(0) {
+			QuicPacketWriter(), num(0), peer(peer), writes_ready_set(
+					writes_ready_set) {
 
 		memset(out_messages, 0, sizeof(out_messages));
 
@@ -203,7 +177,6 @@ public:
 			const net::IPEndPoint& peer_address, net::PerPacketOptions* options)
 					override {
 
-		printf("write packet\n");
 		if (num >= NUM_OUT_MESSAGES || buf_len > net::kMaxPacketSize) {
 			// XXX: just tail drop for now...
 			return net::WriteResult(net::WRITE_STATUS_OK, buf_len);
@@ -233,9 +206,6 @@ public:
 			const net::IPEndPoint& peer_address) const override {
 		// TODO: confer with other impls
 		return net::kMaxPacketSize;
-	}
-
-	virtual ~Writer() {
 	}
 
 	uint8_t buf[net::kMaxPacketSize * NUM_OUT_MESSAGES];
