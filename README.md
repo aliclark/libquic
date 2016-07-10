@@ -75,8 +75,10 @@ of `$ cmake -GNinja ..`.
 
 ```bash
 for f in $(find src/quux -name '*.cc'); do c++ -g -std=c++11 -Isrc -Isrc/third_party/protobuf/src -c -o $f.o $f; done
-cc -g -Isrc -Isrc/third_party/protobuf/src -o apitestc src/quux/apitest.c src/quux/api.cc.o src/quux/server/*.o -Lbuild -Lbuild/boringssl/crypto -Lbuild/protobuf -lquic -lcrypto -lprotobuf -lpthread -lstdc++ -lm
+cc -g -Isrc -Isrc/third_party/protobuf/src -o apitest src/quux/apitest.c $(find src/quux -name '*.o') -Lbuild -Lbuild/boringssl/crypto -Lbuild/protobuf -lquic -lcrypto -lprotobuf -lpthread -lstdc++ -lm
 ```
+
+To run, type `./apitest` in one terminal and `./apitest client` in another.
 
 ## How to integrate
 
