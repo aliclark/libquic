@@ -412,10 +412,10 @@ static void quux_peer_cb(const net::QuicTime& approx_time, uint32_t events,
 
 } // namespace
 
-bool quux_init(void) {
+int quux_init(void) {
 
 	if (mainepolld == -1) {
-		return false;
+		return -1;
 	}
 
 	for (int i = 0; i < NUM_MESSAGES; ++i) {
@@ -452,7 +452,7 @@ bool quux_init(void) {
 	crypto_server_config.AddDefaultConfig(helper.GetRandomGenerator(),
 			helper.GetClock(), net::QuicCryptoServerConfig::ConfigOptions());
 
-	return true;
+	return 0;
 }
 
 quux_listener quux_listen(const struct sockaddr* self_sockaddr,
@@ -484,7 +484,7 @@ quux_listener quux_listen(const struct sockaddr* self_sockaddr,
 	quux_listener ctx = new quux_listener_impl(sd, self_endpoint, quux_accept,
 			quux_writeable, quux_readable);
 
-	struct epoll_event ev = { EPOLLIN, (void*) &ctx->cbp };
+	struct epoll_event ev = { EPOLLIN, { (void*) &ctx->cbp } };
 	if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
 		printf("%s", strerror(errno));
 		return nullptr;
@@ -509,7 +509,7 @@ quux_conn quux_peer(const struct sockaddr* peer_sockaddr) {
 		return nullptr;
 	}
 
-	struct sockaddr_in self_sockaddr = { AF_INET, 0, 0 };
+	struct sockaddr_in self_sockaddr = { AF_INET, 0, { 0 } };
 	socklen_t self_sockaddr_len = sizeof(self_sockaddr);
 
 	// set address for recvmmsg to use
@@ -543,7 +543,7 @@ quux_conn quux_peer(const struct sockaddr* peer_sockaddr) {
 
 	quux_conn ctx = new quux_conn_impl(sd, self_endpoint, peer_endpoint);
 
-	struct epoll_event ev = { EPOLLIN, (void*) &ctx->cbp };
+	struct epoll_event ev = { EPOLLIN, { (void*) &ctx->cbp } };
 	if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
 		return nullptr;
 	}

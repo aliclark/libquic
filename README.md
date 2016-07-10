@@ -75,8 +75,7 @@ of `$ cmake -GNinja ..`.
 
 ```bash
 for f in $(find src/quux -name '*.cc'); do c++ -g -std=c++11 -Isrc -Isrc/third_party/protobuf/src -c -o $f.o $f; done
-rm src/quux/{api,apitest}.cc.o
-c++ -g -std=c++11 -Isrc -Isrc/third_party/protobuf/src -o apitest src/quux/apitest.cc src/quux/api.cc src/quux/*.o src/quux/server/*.o -Lbuild -Lbuild/boringssl/crypto -Lbuild/protobuf -lquic -lcrypto -lprotobuf -lpthread
+cc -g -Isrc -Isrc/third_party/protobuf/src -o apitestc src/quux/apitest.c src/quux/api.cc.o src/quux/server/*.o -Lbuild -Lbuild/boringssl/crypto -Lbuild/protobuf -lquic -lcrypto -lprotobuf -lpthread -lstdc++ -lm
 ```
 
 ## How to integrate
