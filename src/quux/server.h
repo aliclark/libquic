@@ -107,8 +107,9 @@ public:
 	struct sockaddr_in out_sockaddrs[NUM_OUT_MESSAGES];
 	int num = 0;
 
-	quux_listener ctx;
 	std::set<quux_listener>* writes_ready_set;
+
+	quux_listener ctx;
 };
 
 } /* namespace packet */
