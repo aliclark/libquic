@@ -129,8 +129,10 @@ static net::QuicConfig create_config(void) {
 }
 static const net::QuicConfig config = create_config();
 
-static const int EPOLL_SIZE_HINT = 64;
-static const int MAX_EVENTS = 16;
+static const int EPOLL_SIZE_HINT = 256;
+// Setting this too low could be bad for socket QoS,
+// if there's a risk the same sockets kept popping up and not others?
+static const int MAX_EVENTS = EPOLL_SIZE_HINT;
 static const int mainepolld = epoll_create(EPOLL_SIZE_HINT);
 static struct epoll_event events[MAX_EVENTS];
 
