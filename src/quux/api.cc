@@ -572,13 +572,14 @@ void quux_write_please(quux_stream stream) {
 	stream->quux_writeable(stream);
 }
 
-ssize_t quux_write(quux_stream stream, const struct iovec* iov) {
+ssize_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
+	struct iovec iov = { (void*) buf, count };
 	if (!*stream->crypto_connected) {
 		stream->cconnect_interest_set->insert(stream);
 		return 0;
 	}
 
-	net::QuicConsumedData consumed(stream->WritevData(iov));
+	net::QuicConsumedData consumed(stream->WritevData(&iov));
 
 	if (consumed.bytes_consumed == 0) {
 		// FIXME: add a callback for the flow controller and whatever
@@ -603,8 +604,9 @@ void quux_read_please(quux_stream stream) {
 	stream->quux_readable(stream);
 }
 
-ssize_t quux_read(quux_stream stream, struct iovec* iov) {
-	int data_read = stream->Readv(iov);
+ssize_t quux_read(quux_stream stream, uint8_t* buf, size_t count) {
+	struct iovec iov = { buf, count };
+	int data_read = stream->Readv(&iov);
 	if (data_read == 0) {
 		// re-register an interest in reading
 		*stream->read_wanted = true;

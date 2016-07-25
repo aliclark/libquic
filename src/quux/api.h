@@ -71,7 +71,7 @@ quux_stream quux_connect(quux_conn peer, quux_cb quux_writeable,
 		quux_cb quux_readable);
 
 /**
- * Pass up to iov->iov_len from iov->iov_base to the stream for send.
+ * Pass up to 'count' octets from 'buf' to the stream for send.
  *
  * Returned amount tells us how much data was transfered.
  * 0 indicates that no data could be written at this time, but the callback has been re-registered.
@@ -81,7 +81,7 @@ quux_stream quux_connect(quux_conn peer, quux_cb quux_writeable,
  * it's at the discretion of the impl to wait as long as necessary to receive acks for data before tearing down.
  * At some point more functions could be added to query the status of buffered data and force remove if needed.
  */
-ssize_t quux_write(quux_stream stream, const struct iovec* iov);
+ssize_t quux_write(quux_stream stream, const uint8_t* buf, size_t count);
 
 /**
  * Re-registers the callback
@@ -94,13 +94,13 @@ void quux_write_please(quux_stream stream);
 void quux_write_close(quux_stream stream);
 
 /**
- * Read up to iov->iov_len amount of data from the stream into iov->iov_base
+ * Read up to 'count' octets from the stream into 'buf'
  *
  * Returned amount tells us how much data was transfered.
  * 0 indicates that no data could be read at this time, but the callback has been re-registered.
  * -1 indicates that the read stream is closed.
  */
-ssize_t quux_read(quux_stream stream, struct iovec* iov);
+ssize_t quux_read(quux_stream stream, uint8_t* buf, size_t count);
 
 /**
  * Re-registers the callback
