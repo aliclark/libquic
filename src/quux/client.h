@@ -42,11 +42,11 @@ public:
 			const net::QuicServerId& server_id,
 			net::ProofVerifyContext* verify_context,
 			net::QuicCryptoClientConfig* crypto_config,
-			net::QuicCryptoClientStream::ProofHandler* proof_handler) :
+			net::QuicCryptoClientStream::ProofHandler* proof_handler, quux_peer peer_ctx) :
 
 			QuicSession(connection, config), crypto_stream(server_id, this,
 					verify_context, crypto_config, proof_handler), crypto_connected(
-			false) {
+			false), peer_ctx(peer_ctx) {
 
 		Initialize();
 		crypto_stream.CryptoConnect();
@@ -62,7 +62,14 @@ public:
 		// XXX: at the moment we ignore the server end opening a connection
 		// to us in terms of app communication
 		assert(0);
-		return nullptr;
+
+		quux_stream ctx = quux::client::create_incoming_stream_context(id, this);
+
+		quux::peer_acceptables(peer_ctx)->push_back(ctx);
+
+		quux::peer_acceptable_cb(peer_ctx)(peer_ctx);
+
+		return quux::client::get_incoming_stream(ctx);
 	}
 
 	net::ReliableQuicStream* CreateOutgoingDynamicStream(
@@ -103,6 +110,8 @@ public:
 	net::QuicStreamId GetNextOutgoingStreamId() {
 		return QuicSession::GetNextOutgoingStreamId();
 	}
+
+	quux_peer peer_ctx;
 
 	net::QuicCryptoClientStream crypto_stream;
 
@@ -154,7 +163,7 @@ static const int NUM_OUT_MESSAGES = 256;
 
 class Writer: public net::QuicPacketWriter {
 public:
-	Writer(std::set<quux_conn>* writes_ready_set, quux_conn peer) :
+	Writer(quux::WritesReadySet* writes_ready_set, quux_peer_client_s* peer) :
 			QuicPacketWriter(), num(0), peer(peer), writes_ready_set(
 					writes_ready_set) {
 
@@ -209,8 +218,8 @@ public:
 	struct mmsghdr out_messages[NUM_OUT_MESSAGES];
 	int num;
 
-	quux_conn peer;
-	std::set<quux_conn>* writes_ready_set;
+	quux_peer_client_s* peer;
+	quux::WritesReadySet* writes_ready_set;
 };
 
 } /* namespace packet */

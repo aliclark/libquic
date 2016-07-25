@@ -4,21 +4,16 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 
-#include "quux/api.h"
+#include "api.h"
 
 #define BUF_LEN 8192
 static uint8_t buf[BUF_LEN];
 size_t bytes_read;
 
-void server_accept(quux_stream stream) {
-	printf("server_accept\n");
-	quux_read_please(stream);
-}
 void server_readable(quux_stream stream) {
 	printf("server_readable\n");
 
-	struct iovec iovec = { buf, BUF_LEN - 1 };
-	bytes_read = quux_read(stream, &iovec);
+	bytes_read = quux_read(stream, buf, BUF_LEN-1);
 	buf[bytes_read] = '\0';
 
 	if (bytes_read == 0) {
@@ -38,8 +33,7 @@ void server_writeable(quux_stream stream) {
 		buf[i] = toupper(buf[i]);
 	}
 
-	struct iovec iovec = { buf, bytes_read };
-	size_t wrote = quux_write(stream, &iovec);
+	size_t wrote = quux_write(stream, buf, bytes_read);
 
 	if (wrote == 0) {
 		printf("quux_write: 0\n");
@@ -49,12 +43,19 @@ void server_writeable(quux_stream stream) {
 
 	printf("quux_write: %s", buf);
 }
+void server_acceptable(quux_peer peer) {
+	printf("server_acceptable\n");
+	quux_stream stream = quux_accept(peer, server_writeable, server_readable);
+	quux_read_please(stream);
+}
 
+void client_acceptable(quux_peer peer) {
+	// ignore
+}
 void client_writeable(quux_stream stream) {
 	printf("client_writeable\n");
 	const uint8_t hello[] = { 'h', 'e', 'l', 'l', 'o', '!', '\n' };
-	struct iovec iovec = { (void*) hello, 7 };
-	size_t wrote = quux_write(stream, &iovec);
+	size_t wrote = quux_write(stream, hello, sizeof(hello));
 
 	if (wrote == 0) {
 		printf("quux_write: 0\n");
@@ -68,8 +69,7 @@ void client_writeable(quux_stream stream) {
 void client_readable(quux_stream stream) {
 	printf("client_readable\n");
 
-	struct iovec iovec = { buf, BUF_LEN - 1 };
-	bytes_read = quux_read(stream, &iovec);
+	bytes_read = quux_read(stream, buf, BUF_LEN-1);
 	buf[bytes_read] = '\0';
 
 	if (bytes_read == 0) {
@@ -82,19 +82,21 @@ void client_readable(quux_stream stream) {
 }
 
 int main(int argc, char** argv) {
+#ifdef SHADOW
+	struct sockaddr_in addr = { AF_INET, htons(8443), { htonl(0x0b000002) } };
+#else
 	struct sockaddr_in addr = { AF_INET, htons(8443), { htonl(INADDR_LOOPBACK) } };
+#endif
 
-	quux_init();
+	quux_init_loop();
 
 	if (argc > 1) {
-		quux_conn peer = quux_peer((struct sockaddr*) &addr);
-		quux_stream stream = quux_connect(peer, client_writeable,
-				client_readable);
+		quux_peer peer = quux_open((struct sockaddr*) &addr, client_acceptable);
+		quux_stream stream = quux_connect(peer, client_writeable, client_readable);
 		quux_write_please(stream);
 
 	} else {
-		quux_listen((struct sockaddr*) &addr, server_accept, server_writeable,
-				server_readable);
+		quux_listen((struct sockaddr*) &addr, server_acceptable);
 	}
 
 	printf("quux_loop()\n");

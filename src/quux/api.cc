@@ -1,3 +1,5 @@
+#define SHADOW_NO
+
 #include <base/at_exit.h>
 #include <base/command_line.h>
 #include <base/logging.h>
@@ -24,8 +26,10 @@
 #include <quux/connection.h>
 #include <quux/dispatcher.h>
 #include <quux/isaacrandom.h>
+#include <quux/internal.h>
 #include <quux/proof.h>
 #include <quux/server.h>
+#include <quux/internal.h>
 #include <sys/epoll.h>
 #include <sys/uio.h>
 #include <unistd.h>
@@ -38,30 +42,26 @@
 #include <utility>
 
 /*
- * XXX: Possible over-sharing of context things like packet-writer
- * - not sure if some of those are meant to be connection-specific
- *
  * TODO: comparisons against other impl to find missing things
  *
- * XXX: interesting idea: send outgoing connections from the existing "listen" socket,
+ * TODO: send outgoing connections from the existing "listen" socket,
  * or a dedicated "outward" socket.
  * This would mean packets for outgoing connections would also need to run through
  * a dispatcher, but would only need one recvmmsg and sendmmsg call instead of N.
+ * If we continue to ignore IP migration, that could be done by keeping a map of
+ * peer_ip:port -> listener|peer
  *
- * XXX: For multithreaded I'd like to have one socket per thread
- * with the "listen" socket and its connections having a dedicated thread
- * and shard self-initiated OR->OR connections over the remaining threads.
- * To be effective, this design should follow into Tor land,
- * so work for each OR->OR only happens on that thread.
- * OTOH, the same effect can be achieved using `nproc` Tor processes.
+ * Recommended usage for multithreaded:
+ * Spawn 1 process for each core with its own listener on a unique port;
+ * If only a single port can be advertised, use iptables to load balance
+ * incoming packets based on the other ip:port address.
  */
 
 namespace {
 
 #define EVER_AND_EVER ;;
 
-typedef const void (*cbfunc)(const net::QuicTime& approx_time, uint32_t events,
-		void* ctx);
+typedef const void (*cbfunc)(const net::QuicTime& approx_time, void* ctx);
 
 typedef struct cbpair {
 	cbfunc callback;
@@ -82,6 +82,9 @@ static base::TimeTicks approx_time_ticks = base::TimeTicks::Now();
 class CacheClock: public net::QuicClock {
 public:
 	net::QuicTime Now() const override {
+		if (approx_time_ticks.is_null()) {
+			approx_time_ticks = base::TimeTicks::Now();
+		}
 		return net::QuicTime(approx_time_ticks);
 	}
 	net::QuicWallTime WallNow() const override {
@@ -100,14 +103,13 @@ static net::SimpleBufferAllocator buffer_allocator;
 static quux::connection::Helper helper((net::QuicClock*) &quic_clock,
 		&quux_random, &buffer_allocator);
 
-typedef std::set<quux_conn> WritesReadySet;
-static WritesReadySet client_writes_ready_set;
+static quux::WritesReadySet client_writes_ready_set;
 typedef std::set<quux_listener> ListenWritesReadySet;
 static ListenWritesReadySet listen_writes_ready_set;
 
-typedef std::multimap<int64_t, quux::Alarm*> TimeToAlarmMap;
-static TimeToAlarmMap time_to_alarm_map;
+static quux::TimeToAlarmMap time_to_alarm_map;
 static quux::alarm::Factory alarm_factory(&time_to_alarm_map);
+static quux::alarm::LibeventFactory libevent_alarm_factory;
 
 static net::ProofVerifyContext verify_context;
 static quux::proof::Verifier proof_verifier;
@@ -146,38 +148,37 @@ struct mmsghdr listen_messages[NUM_MESSAGES];
 struct sockaddr_in listen_sockaddrs[NUM_MESSAGES];
 // TODO: create a struct of the above structs for better per-packet cache locality?
 
-static void quux_listen_cb(const net::QuicTime& approx_time, uint32_t events,
-		quux_listener ctx);
-static void quux_peer_cb(const net::QuicTime& approx_time, uint32_t events,
-		quux_conn ctx);
+static void quux_listen_cb(const net::QuicTime& approx_time, quux_listener ctx);
+static void quux_peer_cb(const net::QuicTime& approx_time,
+		quux_peer_client_s* ctx);
 
 } // namespace
 
-class quux_listener_impl {
+class quux_listener_s {
 public:
-	explicit quux_listener_impl(int sd, const net::IPEndPoint& self_endpoint,
-			quux_cb quux_accept, quux_cb quux_writeable, quux_cb quux_readable) :
+	explicit quux_listener_s(int sd, const net::IPEndPoint& self_endpoint,
+			quux_acceptable acceptable_cb) :
 
-			sd(sd), self_endpoint(self_endpoint), quux_accept(quux_accept), quux_writeable(
-					quux_writeable), quux_readable(quux_readable), cbp( {
-					(cbfunc) quux_listen_cb, (void*) this }), dispatcher(config,
-					&crypto_server_config, supported_versions,
+			sd(sd), self_endpoint(self_endpoint), acceptable_cb(acceptable_cb), cbp(
+					{ (cbfunc) quux_listen_cb, (void*) this }), dispatcher(
+					config, &crypto_server_config, supported_versions,
 					std::unique_ptr<quux::connection::Helper>(
 							new quux::connection::Helper(&quic_clock,
 									&quux_random, &buffer_allocator)),
 					std::unique_ptr<quux::server::session::Helper>(
 							new quux::server::session::Helper()),
-					std::unique_ptr<quux::alarm::Factory>(
-							new quux::alarm::Factory(&time_to_alarm_map)), sd,
-					&self_endpoint, &listen_writes_ready_set, this), out_messages(
+					std::unique_ptr<net::QuicAlarmFactory>(
+							quux::event_base ?
+									(net::QuicAlarmFactory*) new quux::alarm::LibeventFactory() :
+									(net::QuicAlarmFactory*) new quux::alarm::Factory(
+											&time_to_alarm_map)), sd,
+					self_endpoint, &listen_writes_ready_set, this), out_messages(
 					dispatcher.writer.out_messages), num(&dispatcher.writer.num) {
 	}
 
 	const int sd;
 	const net::IPEndPoint self_endpoint;
-	quux_cb quux_accept;
-	quux_cb quux_writeable;
-	quux_cb quux_readable;
+	quux_acceptable acceptable_cb;
 	const cbpair_t cbp;
 
 	quux::Dispatcher dispatcher;
@@ -187,32 +188,60 @@ public:
 	int* num;
 };
 
-class quux_conn_impl {
+class quux_peer_s {
 public:
+	enum Type {
+		SERVER, CLIENT
+	};
 	// TODO: confer with connection ID creation of other impls - uses a cache thing?
 	// We clear the lower bit so it can be used for reset connection ID
-	explicit quux_conn_impl(int sd, const net::IPEndPoint& self_endpoint,
+	explicit quux_peer_s(Type type, int sd,
+			const net::IPEndPoint& self_endpoint,
 			const net::IPEndPoint& peer_endpoint) :
-			sd(sd), self_endpoint(self_endpoint), peer_endpoint(peer_endpoint), cbp(
-					{ (cbfunc) quux_peer_cb, (void*) this }), writer(
+			type(type), sd(sd), self_endpoint(self_endpoint), peer_endpoint(
+					peer_endpoint), arg(nullptr) {
+	}
+
+	virtual ~quux_peer_s() {
+	}
+
+	Type type;
+
+	const int sd;
+	const net::IPEndPoint self_endpoint;
+	const net::IPEndPoint peer_endpoint;
+
+	std::list<quux_stream> acceptables;
+
+	// handy slot for application code to associate an arbitrary structure
+	void* arg;
+};
+
+class quux_peer_client_s: public quux_peer_s {
+public:
+	explicit quux_peer_client_s(int sd, const net::IPEndPoint& self_endpoint,
+			const net::IPEndPoint& peer_endpoint, quux_acceptable acceptable_cb) :
+			quux_peer_s(Type::CLIENT, sd, self_endpoint, peer_endpoint), acceptable_cb(acceptable_cb), cbp( {
+					(cbfunc) quux_peer_cb, (void*) this }), writer(
 					&client_writes_ready_set, this), connection(
 					net::QuicConnectionId(quux_random.RandUint64() & ~1),
-					peer_endpoint, &helper, &alarm_factory, &writer,
+					peer_endpoint, &helper,
+					quux::event_base ?
+							(net::QuicAlarmFactory*) &libevent_alarm_factory :
+							(net::QuicAlarmFactory*) &alarm_factory, &writer,
 					false, net::Perspective::IS_CLIENT, supported_versions), session(
 					&connection, config,
 					net::QuicServerId(peer_endpoint.ToStringWithoutPort(),
 							peer_endpoint.port(), net::PRIVACY_MODE_DISABLED),
-					&verify_context, &crypto_client_config, &proof_handler), out_messages(
+					&verify_context, &crypto_client_config, &proof_handler, this), out_messages(
 					writer.out_messages), num(&writer.num) {
-
 #if 0
 		connection.set_debug_visitor(&debug_visitor);
 #endif
 	}
 
-	const int sd;
-	const net::IPEndPoint self_endpoint;
-	const net::IPEndPoint peer_endpoint;
+	quux_acceptable acceptable_cb;
+
 	const cbpair_t cbp;
 
 	quux::client::packet::Writer writer;
@@ -226,25 +255,60 @@ public:
 	int* num;
 };
 
-class quux_stream_impl {
+class quux_peer_server_s: public quux_peer_s {
+public:
+	explicit quux_peer_server_s(int sd, const net::IPEndPoint& self_endpoint,
+			const net::IPEndPoint& peer_endpoint,
+
+			net::QuicConnectionId connection_id,
+			net::QuicConnectionHelperInterface* connection_helper,
+			net::QuicAlarmFactory* alarm_factory, net::QuicPacketWriter* writer,
+			const net::QuicVersionVector& supported_versions,
+
+			const net::QuicConfig& config,
+			net::QuicServerSessionBase::Visitor* visitor,
+			net::QuicServerSessionBase::Helper* helper,
+			const net::QuicCryptoServerConfig* crypto_config,
+			net::QuicCompressedCertsCache* compressed_certs_cache,
+			quux_listener listener_ctx) :
+
+			quux_peer_s(Type::SERVER, sd, self_endpoint, peer_endpoint), connection(
+					connection_id, peer_endpoint, connection_helper,
+					alarm_factory, writer,
+					false, net::Perspective::IS_SERVER, supported_versions), session(
+					config, &connection, visitor, helper, crypto_config,
+					compressed_certs_cache, listener_ctx, this) {
+
+		#if 0
+		connection->set_debug_visitor(&debug_visitor);
+#endif
+	}
+
+	quux::connection::Logger debug_visitor;
+	net::QuicConnection connection;
+	quux::server::Session session;
+};
+
+class quux_stream_s {
 public:
 	enum Type {
 		SERVER, CLIENT
 	};
-	explicit quux_stream_impl(Type type, quux_cb quux_writeable,
+	explicit quux_stream_s(Type type, quux_cb quux_writeable,
 			quux_cb quux_readable, bool *crypto_connected,
 			quux::CryptoConnectInterestSet* cconnect_interest_set,
 			bool* read_wanted) :
 			type(type), quux_writeable(quux_writeable), quux_readable(
 					quux_readable), crypto_connected(crypto_connected), cconnect_interest_set(
-					cconnect_interest_set), read_wanted(read_wanted) {
+					cconnect_interest_set), read_wanted(read_wanted), arg(
+					nullptr) {
 	}
 
 	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
 
 	virtual int Readv(const struct iovec* iov) = 0;
 
-	virtual ~quux_stream_impl() {
+	virtual ~quux_stream_s() {
 	}
 
 	Type type;
@@ -257,13 +321,16 @@ public:
 	quux::CryptoConnectInterestSet* cconnect_interest_set;
 
 	bool* read_wanted;
+
+	// handy slot for application code to associate an arbitrary structure
+	void* arg;
 };
 
-class quux_stream_client_impl: public quux_stream_impl {
+class quux_stream_client_s: public quux_stream_s {
 public:
-	explicit quux_stream_client_impl(quux_conn peer, quux_cb quux_writeable,
-			quux_cb quux_readable) :
-			quux_stream_impl(Type::CLIENT, quux_writeable, quux_readable,
+	explicit quux_stream_client_s(quux_peer_client_s* peer,
+			quux_cb quux_writeable, quux_cb quux_readable) :
+			quux_stream_s(Type::CLIENT, quux_writeable, quux_readable,
 					&peer->session.crypto_connected,
 					&peer->session.cconnect_interest_set, &stream.read_wanted), peer(
 					peer), stream(peer->session.GetNextOutgoingStreamId(),
@@ -277,17 +344,39 @@ public:
 		return stream.Readv(iov, 1);
 	}
 
-	quux_conn peer;
+	quux_peer peer;
 	quux::client::Stream stream;
 };
 
-class quux_stream_server_impl: public quux_stream_impl {
+class quux_stream_server_s: public quux_stream_s {
 public:
-	explicit quux_stream_server_impl(net::QuicStreamId id,
-			quux::server::Session* session) :
-			quux_stream_impl(Type::SERVER,
-					session->listener_ctx->quux_writeable,
-					session->listener_ctx->quux_readable,
+	explicit quux_stream_server_s(quux_peer_server_s* peer, quux_cb quux_writeable, quux_cb quux_readable) :
+			quux_stream_s(Type::CLIENT, quux_writeable, quux_readable,
+					&server_crypto_connected, &server_cconnect_interest_set,
+					&stream.read_wanted), peer(peer), stream(
+					peer->session.GetNextOutgoingStreamId(), &peer->session,
+					this) {
+	}
+
+	net::QuicConsumedData WritevData(const struct iovec* iov) override {
+		return stream.WritevData(iov, 1, false, nullptr);
+	}
+	int Readv(const struct iovec* iov) override {
+		return stream.Readv(iov, 1);
+	}
+
+	bool server_crypto_connected = true;
+	quux::CryptoConnectInterestSet server_cconnect_interest_set;
+
+	quux_peer peer;
+	quux::server::Stream stream;
+};
+
+class quux_stream_client_incoming_s: public quux_stream_s {
+public:
+	explicit quux_stream_client_incoming_s(net::QuicStreamId id,
+			quux::client::Session* session) :
+			quux_stream_s(Type::CLIENT, nullptr, nullptr,
 					&server_crypto_connected, &server_cconnect_interest_set,
 					&stream.read_wanted), stream(id, session, this) {
 	}
@@ -299,7 +388,30 @@ public:
 		return stream.Readv(iov, 1);
 	}
 
-	// crypto is necessarily already set up for server streams
+	// crypto is necessarily already set up for incoming streams
+	bool server_crypto_connected = true;
+	quux::CryptoConnectInterestSet server_cconnect_interest_set;
+
+	quux::client::Stream stream;
+};
+
+class quux_stream_server_incoming_s: public quux_stream_s {
+public:
+	explicit quux_stream_server_incoming_s(net::QuicStreamId id,
+			quux::server::Session* session) :
+			quux_stream_s(Type::SERVER, nullptr, nullptr,
+					&server_crypto_connected, &server_cconnect_interest_set,
+					&stream.read_wanted), stream(id, session, this) {
+	}
+
+	net::QuicConsumedData WritevData(const struct iovec* iov) override {
+		return stream.WritevData(iov, 1, false, nullptr);
+	}
+	int Readv(const struct iovec* iov) override {
+		return stream.Readv(iov, 1);
+	}
+
+	// crypto is necessarily already set up for incoming streams
 	bool server_crypto_connected = true;
 	quux::CryptoConnectInterestSet server_cconnect_interest_set;
 
@@ -307,6 +419,9 @@ public:
 };
 
 namespace quux {
+
+// This will be set if we're using libevent
+struct event_base *event_base;
 
 namespace client {
 
@@ -323,13 +438,17 @@ void activate_stream(quux::client::Session* session,
 
 } // namespace session
 
-quux::client::Stream* create_stream(net::QuicStreamId id,
-		quux::client::Session* session, quux_stream ctx) {
-	return new quux::client::Stream(id, session, ctx);
+quux_stream create_incoming_stream_context(net::QuicStreamId id,
+		quux::client::Session* session) {
+	return new quux_stream_client_incoming_s(id, session);
 }
-net::ReliableQuicStream* create_reliable_stream(net::QuicStreamId id,
-		quux::client::Session* session, quux_stream ctx) {
-	return create_stream(id, session, ctx);
+net::ReliableQuicStream* get_incoming_stream(quux_stream ctx) {
+	if (ctx->type != quux_stream_s::CLIENT) {
+		assert(0);
+		return nullptr;
+	}
+	quux_stream_client_incoming_s* client = (quux_stream_client_incoming_s*) ctx;
+	return &client->stream;
 }
 
 } // namespace client
@@ -345,16 +464,45 @@ void activate_stream(quux::server::Session* session,
 
 } // namespace session
 
-quux_stream_impl* create_stream_context(net::QuicStreamId id,
-		quux::server::Session* session) {
-	return new quux_stream_server_impl(id, session);
+quux_peer create_peer_context(int sd, const net::IPEndPoint& self_endpoint,
+		const net::IPEndPoint& client_address,
+		net::QuicConnectionId connection_id,
+		net::QuicConnectionHelperInterface* connection_helper,
+		net::QuicAlarmFactory* alarm_factory, net::QuicPacketWriter* writer,
+		const net::QuicVersionVector& supported_versions,
+
+		const net::QuicConfig& config,
+		net::QuicServerSessionBase::Visitor* visitor,
+		net::QuicServerSessionBase::Helper* helper,
+		const net::QuicCryptoServerConfig* crypto_config,
+		net::QuicCompressedCertsCache* compressed_certs_cache,
+		quux_listener listener_ctx) {
+
+	return new quux_peer_server_s(sd, self_endpoint, client_address,
+			connection_id, connection_helper, alarm_factory, writer,
+			supported_versions, config, visitor, helper,
+			crypto_config, compressed_certs_cache, listener_ctx);
 }
-net::QuicSpdyStream* get_spdy_stream(quux_stream ctx) {
-	if (ctx->type != quux_stream_impl::SERVER) {
+
+net::QuicServerSessionBase* get_session(quux_peer ctx) {
+	if (ctx->type != quux_peer_s::SERVER) {
 		assert(0);
 		return nullptr;
 	}
-	quux_stream_server_impl* server = (quux_stream_server_impl*) ctx;
+	quux_peer_server_s* peer = (quux_peer_server_s*) ctx;
+	return &peer->session;
+}
+
+quux_stream create_incoming_stream_context(net::QuicStreamId id,
+		quux::server::Session* session) {
+	return new quux_stream_server_incoming_s(id, session);
+}
+net::QuicSpdyStream* get_spdy_incoming_stream(quux_stream ctx) {
+	if (ctx->type != quux_stream_s::SERVER) {
+		assert(0);
+		return nullptr;
+	}
+	quux_stream_server_incoming_s* server = (quux_stream_server_incoming_s*) ctx;
 	return &server->stream;
 }
 
@@ -366,8 +514,19 @@ quux_cb c_readable_cb(quux_stream ctx) {
 quux_cb c_writeable_cb(quux_stream ctx) {
 	return ctx->quux_writeable;
 }
-quux_cb listener_accept_cb(quux_listener ctx) {
-	return ctx->quux_accept;
+quux_acceptable listener_acceptable_cb(quux_listener ctx) {
+	return ctx->acceptable_cb;
+}
+quux_acceptable peer_acceptable_cb(quux_peer ctx) {
+	if (ctx->type != quux_peer_s::CLIENT) {
+		assert(0);
+		return nullptr;
+	}
+	quux_peer_client_s* client = (quux_peer_client_s*) ctx;
+	return client->acceptable_cb;
+}
+std::list<quux_stream>* peer_acceptables(quux_peer conn) {
+	return &conn->acceptables;
 }
 
 } // namespace quux
@@ -375,14 +534,21 @@ quux_cb listener_accept_cb(quux_listener ctx) {
 namespace {
 
 // Called *often*
-static void quux_listen_cb(const net::QuicTime& approx_time, uint32_t events,
+static void quux_listen_cb(const net::QuicTime& approx_time,
 		quux_listener ctx) {
 
 	quux::Dispatcher& dispatcher = ctx->dispatcher;
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	net::IPEndPoint peer_endpoint;
 
+#ifdef SHADOW
+	listen_messages[0].msg_len = recvfrom(ctx->sd, iov[0].iov_base,
+			iov[0].iov_len, 0, (struct sockaddr*) &listen_sockaddrs[0],
+			&listen_messages[0].msg_hdr.msg_namelen);
+	int num = 1;
+#else
 	int num = recvmmsg(ctx->sd, listen_messages, NUM_MESSAGES, 0, nullptr);
+#endif
 
 	for (int i = 0; i < num; ++i) {
 		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
@@ -392,17 +558,82 @@ static void quux_listen_cb(const net::QuicTime& approx_time, uint32_t events,
 				sizeof(struct sockaddr_in));
 		dispatcher.ProcessPacket(self_endpoint, peer_endpoint, packet);
 	}
+
 }
 
 // Called *often*
-static void quux_peer_cb(const net::QuicTime& approx_time, uint32_t events,
-		quux_conn ctx) {
+static void quux_listen_libevent_cb(int socket, short what, void* arg) {
+	quux_listener ctx = (quux_listener) arg;
+	if (approx_time_ticks.is_null()) {
+		approx_time_ticks = base::TimeTicks::Now();
+	}
+	net::QuicTime approx_time(approx_time_ticks);
+	quux::Dispatcher& dispatcher = ctx->dispatcher;
+	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
+	net::IPEndPoint peer_endpoint;
+
+#ifdef SHADOW
+	listen_messages[0].msg_len = recvfrom(ctx->sd, iov[0].iov_base,
+			iov[0].iov_len, 0, (struct sockaddr*) &listen_sockaddrs[0],
+			&listen_messages[0].msg_hdr.msg_namelen);
+	int num = 1;
+#else
+	int num = recvmmsg(ctx->sd, listen_messages, NUM_MESSAGES, 0, nullptr);
+#endif
+
+	for (int i = 0; i < num; ++i) {
+		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
+				listen_messages[i].msg_len, approx_time);
+		(void) peer_endpoint.FromSockAddr(
+				(struct sockaddr*) &listen_sockaddrs[i],
+				sizeof(struct sockaddr_in));
+		dispatcher.ProcessPacket(self_endpoint, peer_endpoint, packet);
+	}
+
+}
+
+// Called *often*
+static void quux_peer_cb(const net::QuicTime& approx_time,
+		quux_peer_client_s* ctx) {
 
 	net::QuicConnection& connection = ctx->connection;
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	const net::IPEndPoint& peer_endpoint = ctx->peer_endpoint;
 
+#ifdef SHADOW
+	peer_messages[0].msg_len = recv(ctx->sd, iov[0].iov_base, iov[0].iov_len,
+			0);
+	int num = 1;
+#else
 	int num = recvmmsg(ctx->sd, peer_messages, NUM_MESSAGES, 0, nullptr);
+#endif
+
+	for (int i = 0; i < num; ++i) {
+		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
+				peer_messages[i].msg_len, approx_time);
+
+		connection.ProcessUdpPacket(self_endpoint, peer_endpoint, packet);
+	}
+}
+
+// Called *often*
+static void quux_peer_libevent_cb(int socket, short what, void* arg) {
+	quux_peer_client_s* ctx = (quux_peer_client_s*) arg;
+	if (approx_time_ticks.is_null()) {
+		approx_time_ticks = base::TimeTicks::Now();
+	}
+	net::QuicTime approx_time(approx_time_ticks);
+	net::QuicConnection& connection = ctx->connection;
+	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
+	const net::IPEndPoint& peer_endpoint = ctx->peer_endpoint;
+
+#ifdef SHADOW
+	peer_messages[0].msg_len = recv(ctx->sd, iov[0].iov_base, iov[0].iov_len,
+			0);
+	int num = 1;
+#else
+	int num = recvmmsg(ctx->sd, peer_messages, NUM_MESSAGES, 0, nullptr);
+#endif
 
 	for (int i = 0; i < num; ++i) {
 		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
@@ -414,7 +645,12 @@ static void quux_peer_cb(const net::QuicTime& approx_time, uint32_t events,
 
 } // namespace
 
-int quux_init(void) {
+int quux_init_loop(void) {
+
+	if (quux::event_base) {
+		printf("Cannot use quux_init with libevent initialisation\n");
+		return -1;
+	}
 
 	if (mainepolld == -1) {
 		return -1;
@@ -457,8 +693,20 @@ int quux_init(void) {
 	return 0;
 }
 
+// TODO: put this in a separate static lib
+// so users aren't required to depend on libevent if they don't like
+#define EV_READ		0x02
+#define EV_PERSIST	0x10
+struct event *event_new(struct event_base *base, int sock, short what,
+		void (*cb)(int, short, void *), void *arg);
+int event_add(struct event *ev, const struct timeval *timeout);
+
+void quux_event_base_loop_init(struct event_base *base) {
+	quux::event_base = base;
+}
+
 quux_listener quux_listen(const struct sockaddr* self_sockaddr,
-		quux_cb quux_accept, quux_cb quux_writeable, quux_cb quux_readable) {
+		quux_acceptable acceptable_cb) {
 
 	// Possible support for INET6 in future
 	if (self_sockaddr->sa_family != AF_INET) {
@@ -483,19 +731,58 @@ quux_listener quux_listen(const struct sockaddr* self_sockaddr,
 		return nullptr;
 	}
 
-	quux_listener ctx = new quux_listener_impl(sd, self_endpoint, quux_accept,
-			quux_writeable, quux_readable);
+	quux_listener ctx = new quux_listener_s(sd, self_endpoint, acceptable_cb);
 
-	struct epoll_event ev = { EPOLLIN, { (void*) &ctx->cbp } };
-	if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
-		printf("%s", strerror(errno));
-		return nullptr;
+	if (quux::event_base) {
+		struct event *ev = event_new(quux::event_base, sd,
+		EV_READ | EV_PERSIST, quux_listen_libevent_cb, ctx);
+		if (event_add(ev, nullptr) < 0) {
+			printf("event_add fail\n");
+			return nullptr;
+		}
+	} else {
+		struct epoll_event ev = { EPOLLIN, { (void*) &ctx->cbp } };
+		if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
+			printf("%s", strerror(errno));
+			return nullptr;
+		}
 	}
 
 	return ctx;
 }
 
-quux_conn quux_peer(const struct sockaddr* peer_sockaddr) {
+quux_stream quux_accept(quux_peer peer, quux_cb quux_writeable,
+		quux_cb quux_readable) {
+	quux_stream stream = peer->acceptables.front();
+	peer->acceptables.pop_front();
+	stream->quux_writeable = quux_writeable;
+	stream->quux_readable = quux_readable;
+	return stream;
+}
+
+// mostly useful for use with the quux_accept callback.
+void quux_set_peer_context(quux_peer peer, void* arg) {
+	peer->arg = arg;
+}
+void* quux_get_peer_context(quux_peer peer) {
+	return peer->arg;
+}
+
+// mostly useful for use with the quux_accept callback.
+void quux_set_stream_context(quux_stream stream, void* arg) {
+	stream->arg = arg;
+}
+void* quux_get_stream_context(quux_stream stream) {
+	return stream->arg;
+}
+
+/*
+ * TODO: instead of creating a socket each time, we should have a single
+ * socket ready made for outbound connections and multiplex connections
+ * over it based on the IP:port of the other side.
+ */
+
+quux_peer quux_open(const struct sockaddr* peer_sockaddr, quux_acceptable acceptable_cb) {
 
 	// Possible support for INET6 in future
 	if (peer_sockaddr->sa_family != AF_INET) {
@@ -511,7 +798,11 @@ quux_conn quux_peer(const struct sockaddr* peer_sockaddr) {
 		return nullptr;
 	}
 
+#ifdef SHADOW
+	struct sockaddr_in self_sockaddr = {AF_INET, 0, {htonl(0x0b000001)}};
+#else
 	struct sockaddr_in self_sockaddr = { AF_INET, 0, { 0 } };
+#endif
 	socklen_t self_sockaddr_len = sizeof(self_sockaddr);
 
 	// set address for recvmmsg to use
@@ -543,20 +834,33 @@ quux_conn quux_peer(const struct sockaddr* peer_sockaddr) {
 		return nullptr;
 	}
 
-	quux_conn ctx = new quux_conn_impl(sd, self_endpoint, peer_endpoint);
+	quux_peer_client_s* ctx = new quux_peer_client_s(sd, self_endpoint,
+			peer_endpoint, acceptable_cb);
 
-	struct epoll_event ev = { EPOLLIN, { (void*) &ctx->cbp } };
-	if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
-		return nullptr;
+	if (quux::event_base) {
+		struct event *ev = event_new(quux::event_base, sd,
+		EV_READ | EV_PERSIST, quux_peer_libevent_cb, ctx);
+		if (event_add(ev, nullptr) < 0) {
+			printf("event_add fail\n");
+			return nullptr;
+		}
+	} else {
+		struct epoll_event ev = { EPOLLIN, { (void*) &ctx->cbp } };
+		if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
+			return nullptr;
+		}
 	}
 
 	return ctx;
 }
 
-quux_stream quux_connect(quux_conn peer, quux_cb quux_writeable,
+quux_stream quux_connect(quux_peer conn, quux_cb quux_writeable,
 		quux_cb quux_readable) {
-
-	return new quux_stream_client_impl(peer, quux_writeable, quux_readable);
+	if (conn->type == quux_peer_s::SERVER) {
+		return new quux_stream_server_s((quux_peer_server_s*)conn, quux_writeable, quux_readable);
+	} else {
+		return new quux_stream_client_s((quux_peer_client_s*)conn, quux_writeable, quux_readable);
+	}
 }
 
 void quux_write_please(quux_stream stream) {
@@ -572,7 +876,7 @@ void quux_write_please(quux_stream stream) {
 	stream->quux_writeable(stream);
 }
 
-ssize_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
+size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 	struct iovec iov = { (void*) buf, count };
 	if (!*stream->crypto_connected) {
 		stream->cconnect_interest_set->insert(stream);
@@ -595,6 +899,10 @@ void quux_write_close(quux_stream stream) {
 
 }
 
+int quux_write_is_closed(quux_stream stream) {
+	return 0;
+}
+
 void quux_read_please(quux_stream stream) {
 
 	// FIXME: If we already think the stream is readable, callback immediately,
@@ -604,7 +912,7 @@ void quux_read_please(quux_stream stream) {
 	stream->quux_readable(stream);
 }
 
-ssize_t quux_read(quux_stream stream, uint8_t* buf, size_t count) {
+size_t quux_read(quux_stream stream, uint8_t* buf, size_t count) {
 	struct iovec iov = { buf, count };
 	int data_read = stream->Readv(&iov);
 	if (data_read == 0) {
@@ -618,6 +926,10 @@ void quux_read_close(quux_stream stream) {
 
 }
 
+int quux_read_is_closed(quux_stream stream) {
+	return 0;
+}
+
 // TODO: we may want to give special consideration to the 'listen' fd,
 // since it is likely to send/recv traffic at a greater rate than connections we initiate ourself
 //
@@ -628,6 +940,11 @@ void quux_read_close(quux_stream stream) {
 // but presumably very costly to determine the stream cryptographic-ally
 void quux_loop(void) {
 	int ed = mainepolld;
+
+	if (quux::event_base) {
+		printf("Cannot use quux_loop with libevent initialisation\n");
+		return;
+	}
 
 	approx_time_ticks = base::TimeTicks::Now();
 	int64_t approx_micros = approx_time_ticks.ToInternalValue();
@@ -652,9 +969,9 @@ void quux_loop(void) {
 		int wake_after_millis = -1;
 		bool has_fired = false;
 
-		TimeToAlarmMap::iterator end = time_to_alarm_map.end();
-		for (TimeToAlarmMap::iterator it = time_to_alarm_map.begin(); it != end;
-				) {
+		quux::TimeToAlarmMap::iterator end = time_to_alarm_map.end();
+		for (quux::TimeToAlarmMap::iterator it = time_to_alarm_map.begin();
+				it != end;) {
 
 			// XXX: hopefully the time recorded after epoll_wait
 			// is still accurate enough to trigger most of the alarms now,
@@ -670,17 +987,17 @@ void quux_loop(void) {
 			}
 
 			has_fired = true;
-			TimeToAlarmMap::iterator prev = it++;
+			quux::TimeToAlarmMap::iterator prev = it++;
 			prev->second->Fire();
 			time_to_alarm_map.erase(prev);
 		}
 
 		// There may have been new alarms added in the loop run above.
-		// We continue with the event loop so we can do some other stuff like read and write
-		// sockets if they're ready, but we need to set an earlier timeout
-		// for any new alarms to fire at the right time.
+		// The only ones that may be eligible would have timeout 0.
+		// We should make progress on other stuff first before running
+		// but we need to check if our timeout should be changed to be earlier
 		if (has_fired) {
-			TimeToAlarmMap::iterator it = time_to_alarm_map.begin();
+			quux::TimeToAlarmMap::iterator it = time_to_alarm_map.begin();
 			if (it != time_to_alarm_map.end()) {
 				wake_after_millis = it->first - approx_micros;
 				if (wake_after_millis > 0) {
@@ -699,19 +1016,40 @@ void quux_loop(void) {
 		// XXX: After this point we don't have any code that could set a timer
 
 		for (auto& peer : client_writes_ready_set) {
+#ifdef SHADOW
+			for (int i = 0; i < *peer->num; ++i) {
+				send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
+						peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
+			}
+#else
 			sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
+#endif
 			// XXX: for now we just drop anything that didn't successfully send
 			*peer->num = 0;
 		}
 		client_writes_ready_set.clear();
 
 		for (auto& ctx : listen_writes_ready_set) {
+#ifdef SHADOW
+			for (int i = 0; i < *ctx->num; ++i) {
+				sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
+						ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
+						(struct sockaddr*) ctx->out_messages[i].msg_hdr.msg_name,
+						ctx->out_messages[i].msg_hdr.msg_namelen);
+			}
+#else
 			sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
+#endif
 			// XXX: for now we just drop anything that didn't successfully send
 			*ctx->num = 0;
 		}
 		listen_writes_ready_set.clear();
 
+#ifdef SHADOW
+		if (wake_after_millis == 0) {
+			wake_after_millis = 1;
+		}
+#endif
 		// XXX: millisecond resolution of alarms is ok because with division 999micros -> 0ms.
 		// The worst case is that we poll quite heavily for the 999micros up to each alarm
 		int nReadyFDs = epoll_wait(ed, events, MAX_EVENTS, wake_after_millis);
@@ -726,9 +1064,49 @@ void quux_loop(void) {
 
 		for (int i = 0; i < nReadyFDs; i++) {
 			struct cbpair* pair = (struct cbpair*) events[i].data.ptr;
-			pair->callback(approx_quictime, events[i].events, pair->ctx);
+			pair->callback(approx_quictime, pair->ctx);
 		}
 	}
+}
+
+void quux_event_base_loop_before(void) {
+	approx_time_ticks = base::TimeTicks(); // null
+	cur_wall_time = NULL_WALL_TIME;
+}
+
+/*
+ * Write any packets that were generated by the previous event loop run's callbacks
+ */
+void quux_event_base_loop_after(void) {
+	for (auto& peer : client_writes_ready_set) {
+#ifdef SHADOW
+		for (int i = 0; i < *peer->num; ++i) {
+			send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
+					peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
+		}
+#else
+		sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
+#endif
+		// XXX: for now we just drop anything that didn't successfully send
+		*peer->num = 0;
+	}
+	client_writes_ready_set.clear();
+
+	for (auto& ctx : listen_writes_ready_set) {
+#ifdef SHADOW
+		for (int i = 0; i < *ctx->num; ++i) {
+			sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
+					ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
+					(struct sockaddr*) ctx->out_messages[i].msg_hdr.msg_name,
+					ctx->out_messages[i].msg_hdr.msg_namelen);
+		}
+#else
+		sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
+#endif
+		// XXX: for now we just drop anything that didn't successfully send
+		*ctx->num = 0;
+	}
+	listen_writes_ready_set.clear();
 }
 
 void quux_shutdown(quux_listener server) {

@@ -38,7 +38,7 @@ public:
 			std::unique_ptr<net::QuicConnectionHelperInterface> helper,
 			std::unique_ptr<net::QuicServerSessionBase::Helper> session_helper,
 			std::unique_ptr<net::QuicAlarmFactory> alarm_factory, int sd,
-			const net::IPEndPoint* self_endpoint,
+			const net::IPEndPoint& self_endpoint,
 			std::set<quux_listener>* writes_ready_set, quux_listener ctx) :
 
 			QuicDispatcher(config, crypto_config, supported_versions,
@@ -53,30 +53,16 @@ public:
 			net::QuicConnectionId connection_id,
 			const net::IPEndPoint& client_address) override {
 
-		// The QuicServerSessionBase takes ownership of |connection| below.
-		net::QuicConnection* connection = new net::QuicConnection(connection_id,
-				client_address, helper(), alarm_factory(), &writer,
-				false, net::Perspective::IS_SERVER, GetSupportedVersions());
-
-#if 0
-		net::QuicConnectionDebugVisitor* debug_visitor = new quux::connection::Logger();
-		connection->set_debug_visitor(debug_visitor);
-#endif
-
-		// should know both of these
-//		quux_conn_impl* conn = new quux_conn_impl(sd, self_endpoint,
-//				client_address);
-		// if we place this ctx on the session, we can get hold of it again for the incoming stream
-
-		net::QuicServerSessionBase* session = new quux::server::Session(
-				config(), connection, this, session_helper(), crypto_config(),
+		quux_peer conn_ctx = quux::server::create_peer_context(sd, self_endpoint, client_address,
+				connection_id, helper(), alarm_factory(), &writer,
+				GetSupportedVersions(), config(), this, session_helper(), crypto_config(),
 				compressed_certs_cache(), ctx);
 
-		return session;
+		return quux::server::get_session(conn_ctx);
 	}
 
 	const int sd;
-	const net::IPEndPoint* self_endpoint;
+	const net::IPEndPoint self_endpoint;
 	quux_listener ctx;
 
 	quux::server::packet::Writer writer;

@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "net/base/url_util.h"
-
+#include <net/base/url_util2.h>
 #include "build/build_config.h"
 
 #if defined(OS_POSIX)

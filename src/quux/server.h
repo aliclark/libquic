@@ -144,10 +144,10 @@ public:
 			net::QuicConnection* connection, Visitor* visitor, Helper* helper,
 			const net::QuicCryptoServerConfig* crypto_config,
 			net::QuicCompressedCertsCache* compressed_certs_cache,
-			quux_listener listener_ctx) :
+			quux_listener listener_ctx, quux_peer peer_ctx) :
 			QuicServerSessionBase(config, connection, visitor, helper,
 					crypto_config, compressed_certs_cache), listener_ctx(
-					listener_ctx) {
+					listener_ctx), peer_ctx(peer_ctx) {
 
 		Initialize();
 	}
@@ -155,9 +155,13 @@ public:
 	net::QuicSpdyStream* CreateIncomingDynamicStream(net::QuicStreamId id)
 			override {
 
-		quux_stream ctx = quux::server::create_stream_context(id, this);
-		quux::listener_accept_cb(listener_ctx)(ctx);
-		return quux::server::get_spdy_stream(ctx);
+		quux_stream ctx = quux::server::create_incoming_stream_context(id, this);
+
+		quux::peer_acceptables(peer_ctx)->push_back(ctx);
+
+		quux::listener_acceptable_cb(listener_ctx)(peer_ctx);
+
+		return quux::server::get_spdy_incoming_stream(ctx);
 	}
 
 	net::QuicSpdyStream* CreateOutgoingDynamicStream(net::SpdyPriority priority)
@@ -175,12 +179,20 @@ public:
 				false, this);
 	}
 
-	// because QuicSession::ActivateStream is protected
+	/// exposing protected methods
+
 	void ActivateStream(net::ReliableQuicStream* stream) override {
 		QuicSession::ActivateStream(stream);
 	}
 
+	net::QuicStreamId GetNextOutgoingStreamId() {
+		return QuicSession::GetNextOutgoingStreamId();
+	}
+
 	quux_listener listener_ctx;
+	quux_peer peer_ctx;
+
+	std::list<quux_stream> acceptables;
 };
 
 // FIXME: hack at the QuicDispatcher to make it not depend on SPDY :(

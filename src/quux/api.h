@@ -2,20 +2,21 @@
 #define QUUX_API_H_
 
 #ifdef __cplusplus
-class quux_listener_impl;
-class quux_conn_impl;
-class quux_stream_impl;
-typedef class quux_listener_impl* quux_listener;
-typedef class quux_conn_impl* quux_conn;
-typedef class quux_stream_impl* quux_stream;
+class quux_listener_s;
+class quux_peer_s;
+class quux_stream_s;
+typedef class quux_listener_s* quux_listener;
+typedef class quux_peer_s* quux_peer;
+typedef class quux_stream_s* quux_stream;
 extern "C" {
 
 #else
-typedef struct quux_listener_impl* quux_listener;
-typedef struct quux_conn_impl* quux_conn;
-typedef struct quux_stream_impl* quux_stream;
+typedef struct quux_listener_s* quux_listener;
+typedef struct quux_peer_s* quux_peer;
+typedef struct quux_stream_s* quux_stream;
 #endif /* __cplusplus */
 
+typedef void (*quux_acceptable)(quux_peer);
 typedef void (*quux_cb)(quux_stream);
 
 /*
@@ -26,62 +27,67 @@ typedef void (*quux_cb)(quux_stream);
  *
  * quux_read_please();quux_read_please(); can be used to register the callbacks
  * without attempting IO.
- */
-
-/**
- * Initialise the module
- */
-int quux_init(void);
-
-/**
- * Register listener for new streams on IPv4 ip:port
  *
- * quux_accept is called when a fresh client connects.
+ * TODO: consider axing the read_please, write_please APIs, they should be redundant
+ * in favour of the caller just knowing which functions to call for the optimistic IO attempt
+ */
+
+/**
+ * Initialise the module, specifying that the built in quux_loop will be used.
+ */
+int quux_init_loop(void);
+
+struct event_base;
+
+/**
+ * Initialise the module, with your own libevent loop being used
+ *
+ * EVLOOP_ONCE *must* be used in the event_base_loop call,
+ * otherwise quux's internal time cache will start to go stale.
+ */
+void quux_event_base_loop_init(struct event_base*);
+
+void quux_set_peer_context(quux_peer, void* ctx);
+void* quux_get_peer_context(quux_peer);
+
+void quux_set_stream_context(quux_stream, void* ctx);
+void* quux_get_stream_context(quux_stream);
+
+/**
+ * Start a listener for new streams on IPv4 addr.
+ *
+ * quux_acceptable cb is called with the relevant quux_conn and ctx when a fresh client connects.
  *
  * TODO: error if there is already a server listening on ip:port
  */
-quux_listener quux_listen(const struct sockaddr* addr, quux_cb quux_accept,
-		quux_cb quux_writeable, quux_cb quux_readable);
+quux_listener quux_listen(const struct sockaddr* addr, quux_acceptable cb);
+
+quux_stream quux_accept(quux_peer peer, quux_cb quux_writeable, quux_cb quux_readable);
 
 /**
  * A handle representing an IPv4 connection to the peer
  */
-quux_conn quux_peer(const struct sockaddr* addr);
-
-/*
- * XXX: missing API:
- * quux_conn quux_stream_peer(quux_stream stream);
- *
- * Would allow the listener to create new outgoing streams to the client
- * Alternatively, we could pass quux_conn as an additional argument to quux_accept
- */
-
-/*
- * XXX: missing API:
- * quux_listener quux_peer_listen(quux_conn peer, quux_cb quux_accept,
- *                                                quux_cb quux_writeable, quux_cb quux_readable);
- *
- * Would allow the client to accept new incoming streams from the server
- */
+quux_peer quux_open(const struct sockaddr* addr, quux_acceptable cb);
 
 /**
- * Create a new stream with the peer
+ * Create a new stream on the connection conn.
+ *
+ * ctx will automatically be supplied to the callbacks when they activate
  */
-quux_stream quux_connect(quux_conn peer, quux_cb quux_writeable,
-		quux_cb quux_readable);
+quux_stream quux_connect(quux_peer peer, quux_cb quux_writeable, quux_cb quux_readable);
 
 /**
  * Pass up to 'count' octets from 'buf' to the stream for send.
  *
  * Returned amount tells us how much data was transfered.
  * 0 indicates that no data could be written at this time, but the callback has been re-registered.
- * -1 indicates that the write stream is closed.
+ * Call 'quux_write_is_closed' to find out if the stream is no longer writeable.
  *
  * The initial behaviour will be that once quux_read_close();quux_write_close(); have been called,
  * it's at the discretion of the impl to wait as long as necessary to receive acks for data before tearing down.
  * At some point more functions could be added to query the status of buffered data and force remove if needed.
  */
-ssize_t quux_write(quux_stream stream, const uint8_t* buf, size_t count);
+size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count);
 
 /**
  * Re-registers the callback
@@ -94,13 +100,18 @@ void quux_write_please(quux_stream stream);
 void quux_write_close(quux_stream stream);
 
 /**
+ * 1 if all future writes would do nothing, 0 otherwise.
+ */
+int quux_write_is_closed(quux_stream stream);
+
+/**
  * Read up to 'count' octets from the stream into 'buf'
  *
  * Returned amount tells us how much data was transfered.
  * 0 indicates that no data could be read at this time, but the callback has been re-registered.
- * -1 indicates that the read stream is closed.
+ * Call 'quux_read_is_closed' to find out if the stream is no longer readable.
  */
-ssize_t quux_read(quux_stream stream, uint8_t* buf, size_t count);
+size_t quux_read(quux_stream stream, uint8_t* buf, size_t count);
 
 /**
  * Re-registers the callback
@@ -113,14 +124,43 @@ void quux_read_please(quux_stream stream);
 void quux_read_close(quux_stream stream);
 
 /**
+ * 1 if all future reads would return nothing, 0 otherwise.
+ */
+int quux_read_is_closed(quux_stream stream);
+
+/**
  * Stop accepting connections
  */
 void quux_shutdown(quux_listener server);
 
 /**
- * Run the event loop forever and ever
+ * Run the built-in epoll event loop forever.
+ *
+ * The function will return after timeout_ms has elapsed,
+ * or never if timeout_ms is set to -1
  */
 void quux_loop(void);
+
+/**
+ * Run the built-in epoll event loop.
+ *
+ * The function will return after timeout_ms has elapsed.
+ */
+void quux_loop_with_timeout(int timeout_ms);
+
+/**
+ * Run this just after libevent wait wakes up.
+ *
+ * It updates the approximate time internal to QUIC.
+ */
+void quux_event_base_loop_before(void);
+
+/**
+ * Run this just before going into libevent wait.
+ *
+ * It sends any packets that were generated in the previous event loop run.
+ */
+void quux_event_base_loop_after(void);
 
 #ifdef __cplusplus
 }

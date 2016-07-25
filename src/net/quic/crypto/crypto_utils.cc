@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <net/base/url_util2.h>
 #include "net/quic/crypto/crypto_utils.h"
 
 #include <memory>
 
 #include "crypto/hkdf.h"
 #include "crypto/secure_hash.h"
-#include "net/base/url_util.h"
 #include "net/quic/crypto/crypto_handshake.h"
 #include "net/quic/crypto/crypto_protocol.h"
 #include "net/quic/crypto/quic_decrypter.h"
