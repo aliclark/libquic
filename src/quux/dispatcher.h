@@ -53,12 +53,14 @@ public:
 			net::QuicConnectionId connection_id,
 			const net::IPEndPoint& client_address) override {
 
-		quux_peer conn_ctx = quux::server::create_peer_context(sd, self_endpoint, client_address,
+		quux_peer conn_ctx = quux::server::session::create_context(sd, self_endpoint, client_address,
 				connection_id, helper(), alarm_factory(), &writer,
 				GetSupportedVersions(), config(), this, session_helper(), crypto_config(),
 				compressed_certs_cache(), ctx);
 
-		return quux::server::get_session(conn_ctx);
+		quux::server::connected_cb(ctx)(conn_ctx);
+
+		return quux::server::session::get(conn_ctx);
 	}
 
 	const int sd;

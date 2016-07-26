@@ -43,10 +43,22 @@ void server_readable(quux_stream stream) {
 	printf("quux_read: %s", buf);
 	server_writeable(stream);
 }
-void server_acceptable(quux_peer peer) {
-	printf("server_acceptable\n");
-	quux_stream stream = quux_accept(peer, server_readable, server_writeable);
+void server_accept(quux_stream stream) {
+	printf("server_accept\n");
+	quux_set_readable_cb(stream, server_readable);
+	quux_set_writeable_cb(stream, server_writeable);
 	server_readable(stream);
+}
+void server_connected(quux_peer peer) {
+	printf("server_connected\n");
+	quux_set_accept_cb(peer, server_accept);
+
+	void client_readable(quux_stream stream);
+	void client_writeable(quux_stream stream);
+	quux_stream stream2 = quux_connect(peer);
+	quux_set_readable_cb(stream2, client_readable);
+	quux_set_writeable_cb(stream2, client_writeable);
+	client_writeable(stream2);
 }
 
 void client_readable(quux_stream stream) {
@@ -77,8 +89,11 @@ void client_writeable(quux_stream stream) {
 	printf("quux_write: %s", hello);
 	client_readable(stream);
 }
-void client_acceptable(quux_peer peer) {
-	// ignore
+void client_accept(quux_stream stream) {
+	printf("client_accept\n");
+	quux_set_readable_cb(stream, server_readable);
+	quux_set_writeable_cb(stream, server_writeable);
+	server_readable(stream);
 }
 
 int main(int argc, char** argv) {
@@ -91,12 +106,17 @@ int main(int argc, char** argv) {
 	quux_init_loop();
 
 	if (argc > 1) {
-		quux_peer peer = quux_open((struct sockaddr*) &addr, client_acceptable);
-		quux_stream stream = quux_connect(peer, client_readable, client_writeable);
+		quux_peer peer = quux_open((struct sockaddr*) &addr);
+		quux_set_accept_cb(peer, client_accept);
+
+		quux_stream stream = quux_connect(peer);
+		quux_set_readable_cb(stream, client_readable);
+		quux_set_writeable_cb(stream, client_writeable);
+
 		client_writeable(stream);
 
 	} else {
-		quux_listen((struct sockaddr*) &addr, server_acceptable);
+		quux_listen((struct sockaddr*) &addr, server_connected);
 	}
 
 	printf("quux_loop()\n");

@@ -36,127 +36,6 @@ namespace quux {
 
 namespace client {
 
-class Session: public net::QuicSession {
-public:
-	Session(net::QuicConnection* connection, const net::QuicConfig& config,
-			const net::QuicServerId& server_id,
-			net::ProofVerifyContext* verify_context,
-			net::QuicCryptoClientConfig* crypto_config,
-			net::QuicCryptoClientStream::ProofHandler* proof_handler, quux_peer peer_ctx) :
-
-			QuicSession(connection, config), crypto_stream(server_id, this,
-					verify_context, crypto_config, proof_handler), crypto_connected(
-			false), peer_ctx(peer_ctx) {
-
-		Initialize();
-		crypto_stream.CryptoConnect();
-
-		// This ugly hack is needed so the first stream ID
-		// isn't the reserved SPDY headers stream ID (3)
-		GetNextOutgoingStreamId();
-	}
-
-	net::ReliableQuicStream* CreateIncomingDynamicStream(net::QuicStreamId id)
-			override {
-
-		// XXX: at the moment we ignore the server end opening a connection
-		// to us in terms of app communication
-		assert(0);
-
-		quux_stream ctx = quux::client::create_incoming_stream_context(id, this);
-
-		quux::peer_acceptables(peer_ctx)->push_back(ctx);
-
-		quux::peer_acceptable_cb(peer_ctx)(peer_ctx);
-
-		return quux::client::get_incoming_stream(ctx);
-	}
-
-	net::ReliableQuicStream* CreateOutgoingDynamicStream(
-			net::SpdyPriority priority) override {
-		assert(0);
-		return nullptr;
-	}
-
-	net::QuicCryptoStream* GetCryptoStream() override {
-		return &crypto_stream;
-	}
-
-	void OnCryptoHandshakeEvent(CryptoHandshakeEvent event) override {
-		QuicSession::OnCryptoHandshakeEvent(event);
-
-		if (!crypto_connected) {
-			crypto_connected = true;
-
-			for (quux_stream ctx : cconnect_interest_set) {
-				quux::c_writeable_cb(ctx)(ctx);
-			}
-			cconnect_interest_set.clear();
-		}
-	}
-
-	/// exposing protected methods
-
-	void RegisterStreamPriority(net::QuicStreamId id,
-			net::SpdyPriority priority) {
-		write_blocked_streams()->RegisterStream(id, priority);
-	}
-
-	// because QuicSession::ActivateStream is protected
-	void ActivateStream(net::ReliableQuicStream* stream) override {
-		QuicSession::ActivateStream(stream);
-	}
-
-	net::QuicStreamId GetNextOutgoingStreamId() {
-		return QuicSession::GetNextOutgoingStreamId();
-	}
-
-	quux_peer peer_ctx;
-
-	net::QuicCryptoClientStream crypto_stream;
-
-	bool crypto_connected;
-
-	CryptoConnectInterestSet cconnect_interest_set;
-};
-
-class Stream: public net::ReliableQuicStream {
-public:
-	// ReliableQuic(id,session) needs to know Session is a QuicSession
-	Stream(net::QuicStreamId id, quux::client::Session* session,
-			quux_stream ctx) :
-			ReliableQuicStream(id, session), ctx(ctx), read_wanted(false) {
-
-		quux::client::session::register_stream_priority(session, id);
-		quux::client::session::activate_stream(session, this);
-	}
-
-	void OnDataAvailable() override {
-		if (read_wanted) {
-			read_wanted = false;
-			quux::c_readable_cb(ctx)(ctx);
-		}
-	}
-
-	// ReliableQuicStream::WritevData is protected,
-	// so this can be used to write to it instead
-	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
-	bool fin, net::QuicAckListenerInterface* ack_listener) {
-
-		return net::ReliableQuicStream::WritevData(iov, iov_count, fin,
-				ack_listener);
-	}
-
-	// access to protected stuff
-	int Readv(const struct iovec* iov, size_t iov_len) {
-		return sequencer()->Readv(iov, iov_len);
-	}
-
-	quux_stream ctx;
-
-	bool read_wanted;
-};
-
 namespace packet {
 
 static const int NUM_OUT_MESSAGES = 256;
@@ -223,6 +102,142 @@ public:
 };
 
 } /* namespace packet */
+
+class Session: public net::QuicSession {
+public:
+	Session(net::QuicConnection* connection, const net::QuicConfig& config,
+			const net::QuicServerId& server_id,
+			net::ProofVerifyContext* verify_context,
+			net::QuicCryptoClientConfig* crypto_config,
+			net::QuicCryptoClientStream::ProofHandler* proof_handler, quux_peer peer_ctx) :
+
+			QuicSession(connection, config), crypto_stream(server_id, this,
+					verify_context, crypto_config, proof_handler), crypto_connected(
+			false), peer_ctx(peer_ctx) {
+
+		Initialize();
+		crypto_stream.CryptoConnect();
+
+		// This ugly hack is needed so the first stream ID
+		// isn't the reserved SPDY headers stream ID (3)
+		GetNextOutgoingStreamId();
+	}
+
+	net::ReliableQuicStream* CreateIncomingDynamicStream(net::QuicStreamId id)
+			override {
+
+		quux_cb cb = quux::accept_cb(peer_ctx);
+		if (!cb) {
+			return nullptr;
+		}
+
+		quux_stream ctx = quux::client::stream::create_incoming_context(id, this);
+		cb(ctx);
+		return quux::client::stream::get_incoming(ctx);
+	}
+
+	net::ReliableQuicStream* CreateOutgoingDynamicStream(
+			net::SpdyPriority priority) override {
+		assert(0);
+		return nullptr;
+	}
+
+	net::QuicCryptoStream* GetCryptoStream() override {
+		return &crypto_stream;
+	}
+
+	void OnCryptoHandshakeEvent(CryptoHandshakeEvent event) override {
+		QuicSession::OnCryptoHandshakeEvent(event);
+
+		if (!crypto_connected) {
+			crypto_connected = true;
+
+			for (quux_stream ctx : cconnect_interest_set) {
+				quux::writeable_cb(ctx)(ctx);
+			}
+			cconnect_interest_set.clear();
+		}
+	}
+
+	/// exposing protected methods
+
+	void RegisterStream(net::QuicStreamId id, net::SpdyPriority priority) {
+		write_blocked_streams()->RegisterStream(id, priority);
+	}
+
+	void UnregisterStream(net::QuicStreamId id) {
+		write_blocked_streams()->UnregisterStream(id);
+	}
+
+	// because QuicSession::ActivateStream is protected
+	void ActivateStream(net::ReliableQuicStream* stream) override {
+		QuicSession::ActivateStream(stream);
+	}
+
+	net::QuicStreamId GetNextOutgoingStreamId() {
+		return QuicSession::GetNextOutgoingStreamId();
+	}
+
+	quux_peer peer_ctx;
+
+	net::QuicCryptoClientStream crypto_stream;
+
+	bool crypto_connected;
+
+	CryptoConnectInterestSet cconnect_interest_set;
+};
+
+class Stream: public net::ReliableQuicStream {
+public:
+	// ReliableQuic(id,session) needs to know Session is a QuicSession
+	Stream(net::QuicStreamId id, quux::client::Session* session,
+			quux_stream ctx) :
+			ReliableQuicStream(id, session), ctx(ctx), read_wanted(false), sessionptr(session) {
+
+		quux::client::session::register_stream(session, id);
+		quux::client::session::activate_stream(session, this);
+	}
+
+	~Stream() {
+		StopReading();
+		CloseWriteSide();
+		quux::client::session::unregister_stream(sessionptr, id());
+	}
+
+	void OnDataAvailable() override {
+		if (read_wanted) {
+			read_wanted = false;
+			quux::readable_cb(ctx)(ctx);
+		}
+	}
+
+	/// exposing protected methods
+
+	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
+	bool fin, net::QuicAckListenerInterface* ack_listener) {
+
+		return net::ReliableQuicStream::WritevData(iov, iov_count, fin,
+				ack_listener);
+	}
+
+	// access to protected stuff
+	int Readv(const struct iovec* iov, size_t iov_len) {
+		return sequencer()->Readv(iov, iov_len);
+	}
+
+	void StopReading() override {
+		ReliableQuicStream::StopReading();
+	}
+	void CloseWriteSide() override {
+		ReliableQuicStream::CloseWriteSide();
+	}
+
+	quux_stream ctx;
+
+	bool read_wanted;
+
+	quux::client::Session* sessionptr;
+};
 
 } /* namespace client */
 

@@ -155,13 +155,15 @@ public:
 	net::QuicSpdyStream* CreateIncomingDynamicStream(net::QuicStreamId id)
 			override {
 
-		quux_stream ctx = quux::server::create_incoming_stream_context(id, this);
+		quux_cb cb = quux::accept_cb(peer_ctx);
+		if (!cb) {
+			return nullptr;
+		}
 
-		quux::peer_acceptables(peer_ctx)->push_back(ctx);
-
-		quux::listener_acceptable_cb(listener_ctx)(peer_ctx);
-
-		return quux::server::get_spdy_incoming_stream(ctx);
+		quux_stream ctx = quux::server::stream::create_incoming_context(id,
+				this);
+		cb(ctx);
+		return quux::server::stream::get_incoming_spdy(ctx);
 	}
 
 	net::QuicSpdyStream* CreateOutgoingDynamicStream(net::SpdyPriority priority)
@@ -191,8 +193,6 @@ public:
 
 	quux_listener listener_ctx;
 	quux_peer peer_ctx;
-
-	std::list<quux_stream> acceptables;
 };
 
 // FIXME: hack at the QuicDispatcher to make it not depend on SPDY :(
@@ -211,20 +211,31 @@ public:
 		MarkHeadersConsumed(0);
 	}
 
+	~Stream() {
+		StopReading();
+		CloseWriteSide();
+	}
+
 	void OnDataAvailable() override {
 		if (read_wanted) {
 			read_wanted = false;
-			quux::c_readable_cb(ctx)(ctx);
+			quux::readable_cb(ctx)(ctx);
 		}
 	}
 
-	// ReliableQuicStream::WritevData is protected,
-	// so this can be used to write to it instead
+	/// exposing protected methods
+
 	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
 	bool fin, net::QuicAckListenerInterface* ack_listener) {
 
-		return net::ReliableQuicStream::WritevData(iov, iov_count, fin,
-				ack_listener);
+		return QuicSpdyStream::WritevData(iov, iov_count, fin, ack_listener);
+	}
+
+	void StopReading() override {
+		QuicSpdyStream::StopReading();
+	}
+	void CloseWriteSide() override {
+		QuicSpdyStream::CloseWriteSide();
 	}
 
 	quux_stream ctx;

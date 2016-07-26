@@ -12,41 +12,22 @@ namespace quux {
 typedef std::set<quux_stream> CryptoConnectInterestSet;
 typedef std::set<quux_peer_client_s*> WritesReadySet;
 
+quux_cb accept_cb(quux_peer ctx);
+quux_cb readable_cb(quux_stream ctx);
+quux_cb writeable_cb(quux_stream ctx);
+
 extern struct event_base *event_base;
-
-namespace client {
-
-class Stream;
-class Session;
-
-namespace session {
-
-void register_stream_priority(quux::client::Session* session,
-		net::QuicStreamId id);
-void activate_stream(quux::client::Session* session,
-		quux::client::Stream* stream);
-
-} // namespace session
-
-quux_stream create_incoming_stream_context(net::QuicStreamId id,
-		quux::client::Session* session);
-net::ReliableQuicStream* get_incoming_stream(quux_stream ctx);
-
-} // namespace client
 
 namespace server {
 
-class Stream;
 class Session;
+class Stream;
+
+quux_connected connected_cb(quux_listener ctx);
 
 namespace session {
 
-void activate_stream(quux::server::Session* session,
-		quux::server::Stream* stream);
-
-} // namespace session
-
-quux_peer create_peer_context(int sd, const net::IPEndPoint& self_endpoint,
+quux_peer create_context(int sd, const net::IPEndPoint& self_endpoint,
 		const net::IPEndPoint& client_address,
 		net::QuicConnectionId connection_id,
 		net::QuicConnectionHelperInterface* connection_helper,
@@ -60,19 +41,45 @@ quux_peer create_peer_context(int sd, const net::IPEndPoint& self_endpoint,
 		net::QuicCompressedCertsCache* compressed_certs_cache,
 		quux_listener listener_ctx);
 
-net::QuicServerSessionBase* get_session(quux_peer ctx);
+net::QuicServerSessionBase* get(quux_peer ctx);
 
-quux_stream create_incoming_stream_context(net::QuicStreamId id,
-		quux::server::Session* session);
-net::QuicSpdyStream* get_spdy_incoming_stream(quux_stream server);
+void activate_stream(quux::server::Session* session, quux::server::Stream* stream);
+
+} // namespace session
+
+namespace stream {
+
+quux_stream create_incoming_context(net::QuicStreamId id, quux::server::Session* session);
+net::QuicSpdyStream* get_incoming_spdy(quux_stream server);
+
+} // namespace stream
 
 } // namespace server
 
-quux_cb c_readable_cb(quux_stream ctx);
-quux_cb c_writeable_cb(quux_stream ctx);
-quux_acceptable listener_acceptable_cb(quux_listener ctx);
-quux_acceptable peer_acceptable_cb(quux_peer ctx);
-std::list<quux_stream>* peer_acceptables(quux_peer conn);
+namespace client {
+
+class Stream;
+class Session;
+
+namespace session {
+
+void register_stream(quux::client::Session* session,
+		net::QuicStreamId id);
+void unregister_stream(quux::client::Session* session,
+		net::QuicStreamId id);
+void activate_stream(quux::client::Session* session,
+		quux::client::Stream* stream);
+
+} // namespace session
+
+namespace stream {
+
+quux_stream create_incoming_context(net::QuicStreamId id, quux::client::Session* session);
+net::ReliableQuicStream* get_incoming(quux_stream ctx);
+
+} // namespace stream
+
+} // namespace client
 
 } // namespace quux
 

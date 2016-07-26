@@ -16,7 +16,7 @@ typedef struct quux_peer_s* quux_peer;
 typedef struct quux_stream_s* quux_stream;
 #endif /* __cplusplus */
 
-typedef void (*quux_acceptable)(quux_peer);
+typedef void (*quux_connected)(quux_peer);
 typedef void (*quux_cb)(quux_stream);
 
 /*
@@ -24,6 +24,11 @@ typedef void (*quux_cb)(quux_stream);
  * the read/write operation on that stream has returned 0.
  *
  * quux_c begins in triggered state for both read/write, which means IO can be attempted (albeit may return 0).
+ *
+ * XXX: perhaps instead of:
+ * quux_stream quux_connect(quux_peer, quux_cb quux_readable, quux_cb quux_writeable);
+ *
+ * quux_stream quux_connect(quux_peer);
  */
 
 /**
@@ -50,25 +55,41 @@ void* quux_get_stream_context(quux_stream);
 /**
  * Start a listener for new streams on IPv4 addr.
  *
- * quux_acceptable cb is called with the relevant quux_conn and ctx when a fresh client connects.
- *
  * TODO: error if there is already a server listening on ip:port
+ *
+ * quux_connected cb is called with the peer when a fresh client connects.
  */
-quux_listener quux_listen(const struct sockaddr* addr, quux_acceptable cb);
-
-quux_stream quux_accept(quux_peer peer, quux_cb quux_readable, quux_cb quux_writeable);
+quux_listener quux_listen(const struct sockaddr* addr, quux_connected cb);
 
 /**
  * A handle representing an IPv4 connection to the peer
  */
-quux_peer quux_open(const struct sockaddr* addr, quux_acceptable cb);
+quux_peer quux_open(const struct sockaddr* addr);
+
+/**
+ * Nb. the sockaddr* will be valid for as long as the quux_peer,
+ * therefore please make a copy if persistence is needed.
+ */
+// TODO:
+// const struct sockaddr* quux_get_remote_addr(quux_peer);
+// const struct sockaddr* quux_get_bind_addr(quux_peer);
 
 /**
  * Create a new stream on the connection conn.
  *
  * ctx will automatically be supplied to the callbacks when they activate
  */
-quux_stream quux_connect(quux_peer peer, quux_cb quux_readable, quux_cb quux_writeable);
+quux_stream quux_connect(quux_peer peer);
+
+/**
+ * If the accept callback is not installed then incoming streams will be rejected.
+ */
+void quux_set_accept_cb(quux_peer, quux_cb quux_accept);
+
+void quux_set_readable_cb(quux_stream, quux_cb quux_readable);
+void quux_set_writeable_cb(quux_stream, quux_cb quux_writeable);
+
+quux_peer quux_get_peer(quux_stream);
 
 /**
  * Pass up to 'count' octets from 'buf' to the stream for send.
@@ -130,7 +151,7 @@ void quux_loop(void);
  *
  * The function will return after timeout_ms has elapsed.
  */
-void quux_loop_with_timeout(int timeout_ms);
+// TODO: void quux_loop_with_timeout(int timeout_ms);
 
 /**
  * Run this just after libevent wait wakes up.
