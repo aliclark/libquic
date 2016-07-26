@@ -863,19 +863,6 @@ quux_stream quux_connect(quux_peer conn, quux_cb quux_writeable,
 	}
 }
 
-void quux_write_please(quux_stream stream) {
-	if (!*stream->crypto_connected) {
-		stream->cconnect_interest_set->insert(stream);
-		return;
-	}
-
-	// FIXME: If we already think the stream is writeable, callback immediately,
-	// else just set write_wanted without callback
-	//*stream->write_wanted = true;
-
-	stream->quux_writeable(stream);
-}
-
 size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 	struct iovec iov = { (void*) buf, count };
 	if (!*stream->crypto_connected) {
@@ -901,15 +888,6 @@ void quux_write_close(quux_stream stream) {
 
 int quux_write_is_closed(quux_stream stream) {
 	return 0;
-}
-
-void quux_read_please(quux_stream stream) {
-
-	// FIXME: If we already think the stream is readable, callback immediately,
-	// else just set read_wanted without doing the callback
-	//*stream->read_wanted = true;
-
-	stream->quux_readable(stream);
 }
 
 size_t quux_read(quux_stream stream, uint8_t* buf, size_t count) {

@@ -24,12 +24,6 @@ typedef void (*quux_cb)(quux_stream);
  * the read/write operation on that stream has returned 0.
  *
  * quux_c begins in triggered state for both read/write, which means IO can be attempted (albeit may return 0).
- *
- * quux_read_please();quux_read_please(); can be used to register the callbacks
- * without attempting IO.
- *
- * TODO: consider axing the read_please, write_please APIs, they should be redundant
- * in favour of the caller just knowing which functions to call for the optimistic IO attempt
  */
 
 /**
@@ -90,11 +84,6 @@ quux_stream quux_connect(quux_peer peer, quux_cb quux_writeable, quux_cb quux_re
 size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count);
 
 /**
- * Re-registers the callback
- */
-void quux_write_please(quux_stream stream);
-
-/**
  * Indicate we don't want to write any additional data to the stream.
  */
 void quux_write_close(quux_stream stream);
@@ -112,11 +101,6 @@ int quux_write_is_closed(quux_stream stream);
  * Call 'quux_read_is_closed' to find out if the stream is no longer readable.
  */
 size_t quux_read(quux_stream stream, uint8_t* buf, size_t count);
-
-/**
- * Re-registers the callback
- */
-void quux_read_please(quux_stream stream);
 
 /**
  * Indicate we don't want to read any additional data from the stream.
