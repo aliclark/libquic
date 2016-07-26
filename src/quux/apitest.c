@@ -45,7 +45,7 @@ void server_readable(quux_stream stream) {
 }
 void server_acceptable(quux_peer peer) {
 	printf("server_acceptable\n");
-	quux_stream stream = quux_accept(peer, server_writeable, server_readable);
+	quux_stream stream = quux_accept(peer, server_readable, server_writeable);
 	server_readable(stream);
 }
 
@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
 
 	if (argc > 1) {
 		quux_peer peer = quux_open((struct sockaddr*) &addr, client_acceptable);
-		quux_stream stream = quux_connect(peer, client_writeable, client_readable);
+		quux_stream stream = quux_connect(peer, client_readable, client_writeable);
 		client_writeable(stream);
 
 	} else {

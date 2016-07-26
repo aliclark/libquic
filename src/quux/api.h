@@ -56,7 +56,7 @@ void* quux_get_stream_context(quux_stream);
  */
 quux_listener quux_listen(const struct sockaddr* addr, quux_acceptable cb);
 
-quux_stream quux_accept(quux_peer peer, quux_cb quux_writeable, quux_cb quux_readable);
+quux_stream quux_accept(quux_peer peer, quux_cb quux_readable, quux_cb quux_writeable);
 
 /**
  * A handle representing an IPv4 connection to the peer
@@ -68,7 +68,7 @@ quux_peer quux_open(const struct sockaddr* addr, quux_acceptable cb);
  *
  * ctx will automatically be supplied to the callbacks when they activate
  */
-quux_stream quux_connect(quux_peer peer, quux_cb quux_writeable, quux_cb quux_readable);
+quux_stream quux_connect(quux_peer peer, quux_cb quux_readable, quux_cb quux_writeable);
 
 /**
  * Pass up to 'count' octets from 'buf' to the stream for send.

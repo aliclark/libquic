@@ -751,8 +751,7 @@ quux_listener quux_listen(const struct sockaddr* self_sockaddr,
 	return ctx;
 }
 
-quux_stream quux_accept(quux_peer peer, quux_cb quux_writeable,
-		quux_cb quux_readable) {
+quux_stream quux_accept(quux_peer peer, quux_cb quux_readable, quux_cb quux_writeable) {
 	quux_stream stream = peer->acceptables.front();
 	peer->acceptables.pop_front();
 	stream->quux_writeable = quux_writeable;
@@ -854,8 +853,7 @@ quux_peer quux_open(const struct sockaddr* peer_sockaddr, quux_acceptable accept
 	return ctx;
 }
 
-quux_stream quux_connect(quux_peer conn, quux_cb quux_writeable,
-		quux_cb quux_readable) {
+quux_stream quux_connect(quux_peer conn, quux_cb quux_readable, quux_cb quux_writeable) {
 	if (conn->type == quux_peer_s::SERVER) {
 		return new quux_stream_server_s((quux_peer_server_s*)conn, quux_writeable, quux_readable);
 	} else {
