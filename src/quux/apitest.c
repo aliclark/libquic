@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 
-#include "api.h"
+#include <quux.h>
 
 #define BUF_LEN 8192
 static uint8_t buf[BUF_LEN];

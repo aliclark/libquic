@@ -3,7 +3,7 @@
 
 #include <net/quic/quic_server_session_base.h>
 #include <net/quic/quic_protocol.h>
-#include <quux/api.h>
+#include <quux/quux.h>
 
 class quux_peer_client_s;
 
