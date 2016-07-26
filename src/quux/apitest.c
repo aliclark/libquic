@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
 	quux_init_loop();
 
 	if (argc > 1) {
-		quux_peer peer = quux_open((struct sockaddr*) &addr);
+		quux_peer peer = quux_open("example.com", (struct sockaddr*) &addr);
 		quux_set_accept_cb(peer, client_accept);
 
 		quux_stream stream = quux_connect(peer);

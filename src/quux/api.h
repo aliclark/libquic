@@ -62,9 +62,13 @@ void* quux_get_stream_context(quux_stream);
 quux_listener quux_listen(const struct sockaddr* addr, quux_connected cb);
 
 /**
- * A handle representing an IPv4 connection to the peer
+ * A handle representing an IPv4 connection to the peer.
+ *
+ * This will kick off the crypto handshake in the background.
+ *
+ * TODO: FIXME: somehow fail to connect if cert doesn't match hostname UTF8.
  */
-quux_peer quux_open(const struct sockaddr* addr);
+quux_peer quux_open(const char* hostname, const struct sockaddr* addr);
 
 /**
  * Nb. the sockaddr* will be valid for as long as the quux_peer,

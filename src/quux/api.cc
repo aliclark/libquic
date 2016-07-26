@@ -799,7 +799,7 @@ void* quux_get_stream_context(quux_stream stream) {
  * over it based on the IP:port of the other side.
  */
 
-quux_peer quux_open(const struct sockaddr* peer_sockaddr) {
+quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) {
 
 	// Possible support for INET6 in future
 	if (peer_sockaddr->sa_family != AF_INET) {
