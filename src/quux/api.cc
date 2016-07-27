@@ -1,3 +1,8 @@
+#include <fcntl.h>
+#include <stddef.h>
+#include <sys/socket.h>
+#include <cassert>
+#include <cstdio>
 
 #define SHADOW_NO
 
@@ -41,6 +46,7 @@
 #include <memory>
 #include <set>
 #include <utility>
+#include <stdarg.h>
 
 /*
  * TODO: comparisons against other impl to find missing things
@@ -146,6 +152,8 @@ struct mmsghdr peer_messages[NUM_MESSAGES];
 struct mmsghdr listen_messages[NUM_MESSAGES];
 struct sockaddr_in listen_sockaddrs[NUM_MESSAGES];
 // TODO: create a struct of the above structs for better per-packet cache locality?
+
+static FILE* log_fileh = stderr;
 
 static void quux_listen_cb(const net::QuicTime& approx_time, quux_listener ctx);
 static void quux_peer_cb(const net::QuicTime& approx_time,
@@ -668,12 +676,19 @@ static void quux_peer_libevent_cb(int socket, short what, void* arg) {
 	}
 }
 
+static void log(const char *format, ...) {
+	va_list ap;
+	va_start(ap, format);
+	fprintf(log_fileh, format, ap);
+	va_end(ap);
+}
+
 } // namespace
 
 int quux_init_loop(void) {
 
 	if (quux::event_base) {
-		printf("Cannot use quux_init with libevent initialisation\n");
+		log("Cannot use quux_init with libevent initialisation\n");
 		return -1;
 	}
 
@@ -696,12 +711,15 @@ int quux_init_loop(void) {
 		listen_messages[i].msg_hdr.msg_iovlen = 1;
 	}
 
+	crypto_server_config.AddDefaultConfig(helper.GetRandomGenerator(),
+			helper.GetClock(), net::QuicCryptoServerConfig::ConfigOptions());
+
 #if 0
 	// required for logging
 	base::CommandLine::Init(0, nullptr);
 
 	char logName[255];
-	snprintf(logName, 255, "/tmp/quicsock.log.%d", getpid());
+	snprintf(logName, 255, "/tmp/quic.log.%d", getpid());
 
 	logging::LoggingSettings settings;
 	settings.logging_dest = logging::LOG_TO_ALL;
@@ -712,8 +730,6 @@ int quux_init_loop(void) {
 	logging::SetMinLogLevel(-1);
 #endif
 
-	crypto_server_config.AddDefaultConfig(helper.GetRandomGenerator(),
-			helper.GetClock(), net::QuicCryptoServerConfig::ConfigOptions());
 
 	return 0;
 }
@@ -728,6 +744,11 @@ int event_add(struct event *ev, const struct timeval *timeout);
 
 void quux_event_base_loop_init(struct event_base *base) {
 	quux::event_base = base;
+
+	char logName[255];
+	snprintf(logName, 255, "/tmp/quux.log.%d", getpid());
+
+	log_fileh = fopen(logName, "w");
 }
 
 quux_listener quux_listen(const struct sockaddr* self_sockaddr,
@@ -735,19 +756,19 @@ quux_listener quux_listen(const struct sockaddr* self_sockaddr,
 
 	// Possible support for INET6 in future
 	if (self_sockaddr->sa_family != AF_INET) {
-		printf("Sorry, socket type currently unsupported\n");
+		log("Sorry, socket type currently unsupported\n");
 		return nullptr;
 	}
 	socklen_t self_sockaddr_len = sizeof(struct sockaddr_in);
 
 	int sd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
 	if (sd < 0) {
-		printf("%s", strerror(errno));
+		log("%s", strerror(errno));
 		return nullptr;
 	}
 
 	if (bind(sd, self_sockaddr, self_sockaddr_len) < 0) {
-		printf("%s", strerror(errno));
+		log("%s", strerror(errno));
 		return nullptr;
 	}
 
@@ -762,13 +783,13 @@ quux_listener quux_listen(const struct sockaddr* self_sockaddr,
 		struct event *ev = event_new(quux::event_base, sd,
 		EV_READ | EV_PERSIST, quux_listen_libevent_cb, ctx);
 		if (event_add(ev, nullptr) < 0) {
-			printf("event_add fail\n");
+			log("event_add fail\n");
 			return nullptr;
 		}
 	} else {
 		struct epoll_event ev = { EPOLLIN, { (void*) &ctx->cbp } };
 		if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
-			printf("%s", strerror(errno));
+			log("%s", strerror(errno));
 			return nullptr;
 		}
 	}
@@ -802,7 +823,7 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 
 	// Possible support for INET6 in future
 	if (peer_sockaddr->sa_family != AF_INET) {
-		printf("Sorry, socket type currently unsupported\n");
+		log("Sorry, socket type currently unsupported\n");
 		return nullptr;
 	}
 	socklen_t peer_sockaddr_len = sizeof(struct sockaddr_in);
@@ -810,7 +831,7 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 	/* create the client socket and get a socket descriptor */
 	int sd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
 	if (sd < 0) {
-		printf("%s", strerror(errno));
+		log("%s", strerror(errno));
 		return nullptr;
 	}
 
@@ -823,19 +844,19 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 
 	// set address for recvmmsg to use
 	if (bind(sd, (struct sockaddr*) &self_sockaddr, self_sockaddr_len) < 0) {
-		printf("%s", strerror(errno));
+		log("%s", strerror(errno));
 		return nullptr;
 	}
 
 	// set address for sendmmsg to use
 	if (connect(sd, peer_sockaddr, peer_sockaddr_len) < 0) {
-		printf("%s", strerror(errno));
+		log("%s", strerror(errno));
 		return nullptr;
 	}
 
 	if (getsockname(sd, (struct sockaddr*) &self_sockaddr, &self_sockaddr_len)
 			< 0) {
-		printf("%s", strerror(errno));
+		log("%s", strerror(errno));
 		return nullptr;
 	}
 
@@ -856,7 +877,7 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 		struct event *ev = event_new(quux::event_base, sd,
 		EV_READ | EV_PERSIST, quux_peer_libevent_cb, ctx);
 		if (event_add(ev, nullptr) < 0) {
-			printf("event_add fail\n");
+			log("event_add fail\n");
 			return nullptr;
 		}
 	} else {
@@ -903,7 +924,7 @@ size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 	if (consumed.bytes_consumed == 0) {
 		// FIXME: add a callback for the flow controller and whatever
 		// else becoming unblocked
-		printf("ERROR: Sorry no writes yet\n");
+		log("ERROR: Sorry no writes yet\n");
 	}
 
 	// XXX: somehow indicate the socket as needing flush
@@ -952,7 +973,7 @@ void quux_loop(void) {
 	int ed = mainepolld;
 
 	if (quux::event_base) {
-		printf("Cannot use quux_loop with libevent initialisation\n");
+		log("Cannot use quux_loop with libevent initialisation\n");
 		return;
 	}
 
