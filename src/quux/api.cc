@@ -88,11 +88,16 @@ static base::TimeTicks approx_time_ticks = base::TimeTicks::Now();
 // A QuicClock that only updates once per event loop run
 class CacheClock: public net::QuicClock {
 public:
-	net::QuicTime Now() const override {
+	CacheClock() {
+	}
+	net::QuicTime ApproximateNow() const override {
 		if (approx_time_ticks.is_null()) {
 			approx_time_ticks = base::TimeTicks::Now();
 		}
 		return net::QuicTime(approx_time_ticks);
+	}
+	net::QuicTime Now() const override {
+		return ApproximateNow();
 	}
 	net::QuicWallTime WallNow() const override {
 		if (cur_wall_time.IsZero()) {
@@ -104,7 +109,7 @@ public:
 	}
 };
 
-static CacheClock quic_clock;
+static const CacheClock quic_clock;
 static quux::IsaacRandom quux_random;
 static net::SimpleBufferAllocator buffer_allocator;
 static quux::connection::Helper helper((net::QuicClock*) &quic_clock,
@@ -456,6 +461,13 @@ void log(const char *format, ...) {
 	va_start(ap, format);
 	vfprintf(log_fileh, format, ap);
 	va_end(ap);
+}
+
+int64_t get_now_clock_micros(void) {
+	if (approx_time_ticks.is_null()) {
+		approx_time_ticks = base::TimeTicks::Now();
+	}
+	return approx_time_ticks.ToInternalValue();
 }
 
 quux_cb accept_cb(quux_peer ctx) {

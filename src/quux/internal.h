@@ -12,11 +12,13 @@ namespace quux {
 typedef std::set<quux_stream> CryptoConnectInterestSet;
 typedef std::set<quux_peer_client_s*> WritesReadySet;
 
+int64_t get_now_clock_micros(void);
+
+void log(const char* format, ...);
+
 quux_cb accept_cb(quux_peer ctx);
 quux_cb readable_cb(quux_stream ctx);
 quux_cb writeable_cb(quux_stream ctx);
-
-void log(const char* format, ...);
 
 extern struct event_base *event_base;
 

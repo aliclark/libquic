@@ -46,21 +46,30 @@ public:
 	}
 
 	void SetImpl() override {
+		int64_t abs_micros = deadline().Subtract(net::QuicTime::Zero()).ToMicroseconds();
+
 		alarm_time_map->insert(
-				std::make_pair(
-						deadline().Subtract(net::QuicTime::Zero()).ToMicroseconds(),
-						this));
+				std::make_pair(abs_micros, this));
+
+		quux::log("set alarm %p for clock value %d us\n", this, abs_micros);
+
+		gogogo = true;
 	}
 
 	void CancelImpl() override {
 		gogogo = false;
+		int64_t abs_micros = deadline().Subtract(net::QuicTime::Zero()).ToMicroseconds();
+
+		quux::log("cancelled alarm %p\n", this);
 
 		typedef quux::TimeToAlarmMap::iterator iterator;
-		std::pair<iterator, iterator> iterpair = alarm_time_map->equal_range(deadline().Subtract(net::QuicTime::Zero()).ToMicroseconds());
+		std::pair<iterator, iterator> iterpair = alarm_time_map->equal_range(abs_micros);
 
 		iterator it = iterpair.first;
 		for (; it != iterpair.second; ++it) {
 		    if (it->second == this) {
+                // FIXME: why doesn't this work?
+                quux::log("erased alarm %p\n", this);
 		    	alarm_time_map->erase(it);
 		        break;
 		    }
@@ -69,8 +78,10 @@ public:
 
 	void Fire() {
 		if (!gogogo) {
+			quux::log("null fire, investigate %p\n", this);
 			return;
 		}
+		quux::log("firing alarm %p\n", this);
 		QuicAlarm::Fire();
 	}
 
@@ -87,7 +98,9 @@ public:
 	}
 
 	void SetImpl() override {
-		int64_t abs_micros = deadline().Subtract(net::QuicTime::Zero()).ToMicroseconds();
+		int64_t alarm_clock_micros = deadline().Subtract(net::QuicTime::Zero()).ToMicroseconds();
+		int64_t now_clock_micros = quux::get_now_clock_micros();
+		int64_t abs_micros = alarm_clock_micros - now_clock_micros;
 		int64_t abs_secs = abs_micros / 1000000;
 		int64_t rem_micros = abs_micros - (abs_secs * 1000000);
 #ifdef SHADOW
@@ -99,17 +112,23 @@ public:
 		struct timeval deadline_timeval = { abs_secs, rem_micros };
 		tev = event_new(quux::event_base, -1, 0, alarm::libevent_timeout_cb, this);
 		event_add(tev, &deadline_timeval);
+
+		quux::log("set alarm %p for +%d us\n", this, abs_micros);
+		gogogo = true;
 	}
 
 	void CancelImpl() override {
 		gogogo = false;
 		event_del(tev);
+		quux::log("cancelled alarm %p\n", this);
 	}
 
 	void Fire() {
 		if (!gogogo) {
+			quux::log("null fire, investigate %p\n", this);
 			return;
 		}
+		quux::log("firing alarm %p\n", this);
 		QuicAlarm::Fire();
 	}
 
