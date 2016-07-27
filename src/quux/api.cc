@@ -113,14 +113,12 @@ static quux::alarm::Factory alarm_factory(&time_to_alarm_map);
 static quux::alarm::LibeventFactory libevent_alarm_factory;
 
 static net::ProofVerifyContext verify_context;
-static quux::proof::Verifier proof_verifier;
-static net::QuicCryptoClientConfig crypto_client_config(&proof_verifier);
+static net::QuicCryptoClientConfig crypto_client_config(new quux::proof::Verifier());
 static quux::proof::Handler proof_handler;
 
 static base::StringPiece source_address_token_secret;
-static quux::proof::Source proof_source;
 static net::QuicCryptoServerConfig crypto_server_config(
-		source_address_token_secret, &quux_random, &proof_source);
+		source_address_token_secret, &quux_random, new quux::proof::Source());
 
 static net::QuicConfig create_config(void) {
 	net::QuicConfig config;
@@ -267,7 +265,7 @@ public:
 			const net::QuicConfig& config,
 			net::QuicServerSessionBase::Visitor* visitor,
 			net::QuicServerSessionBase::Helper* helper,
-			const net::QuicCryptoServerConfig* crypto_config,
+			const net::QuicCryptoServerConfig* crypto_server_config,
 			net::QuicCompressedCertsCache* compressed_certs_cache,
 			quux_listener listener_ctx) :
 
@@ -275,7 +273,7 @@ public:
 					connection_id, peer_endpoint, connection_helper,
 					alarm_factory, writer,
 					false, net::Perspective::IS_SERVER, supported_versions), session(
-					config, &connection, visitor, helper, crypto_config,
+					config, &connection, visitor, helper, crypto_server_config,
 					compressed_certs_cache, listener_ctx, this) {
 #if 0
 		connection->set_debug_visitor(&debug_visitor);
@@ -474,14 +472,14 @@ quux_peer create_context(int sd, const net::IPEndPoint& self_endpoint,
 		const net::QuicConfig& config,
 		net::QuicServerSessionBase::Visitor* visitor,
 		net::QuicServerSessionBase::Helper* helper,
-		const net::QuicCryptoServerConfig* crypto_config,
+		const net::QuicCryptoServerConfig* crypto_server_config,
 		net::QuicCompressedCertsCache* compressed_certs_cache,
 		quux_listener listener_ctx) {
 
 	return new quux_peer_server_s(sd, self_endpoint, client_address,
 			connection_id, connection_helper, alarm_factory, writer,
 			supported_versions, config, visitor, helper,
-			crypto_config, compressed_certs_cache, listener_ctx);
+			crypto_server_config, compressed_certs_cache, listener_ctx);
 }
 
 net::QuicServerSessionBase* get(quux_peer ctx) {
