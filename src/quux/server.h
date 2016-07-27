@@ -200,7 +200,7 @@ class Stream: public net::QuicSpdyStream {
 public:
 	Stream(net::QuicStreamId id, quux::server::Session* spdy_session,
 			quux_stream ctx) :
-			QuicSpdyStream(id, spdy_session), ctx(ctx), read_wanted(false) {
+			QuicSpdyStream(id, spdy_session), ctx(ctx), read_wanted(false), write_wanted(false) {
 
 		// nb. QuicSpdyStream() already registered stream priority for us
 		quux::server::session::activate_stream(spdy_session, this);
@@ -223,6 +223,13 @@ public:
 		}
 	}
 
+	void OnCanWrite() override {
+		if (write_wanted) {
+			write_wanted = false;
+			quux::writeable_cb(ctx)(ctx);
+		}
+	}
+
 	/// exposing protected methods
 
 	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
@@ -241,6 +248,7 @@ public:
 	quux_stream ctx;
 
 	bool read_wanted;
+	bool write_wanted;
 };
 
 } /* namespace server */

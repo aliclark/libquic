@@ -301,10 +301,10 @@ public:
 	};
 	explicit quux_stream_s(Type type, quux_peer peer, bool *crypto_connected,
 			quux::CryptoConnectInterestSet* cconnect_interest_set,
-			bool* read_wanted) :
+			bool* read_wanted, bool* write_wanted) :
 			type(type), peer(peer), quux_writeable(nullptr), quux_readable(
 					nullptr), crypto_connected(crypto_connected), cconnect_interest_set(
-					cconnect_interest_set), read_wanted(read_wanted), arg(
+					cconnect_interest_set), read_wanted(read_wanted), write_wanted(write_wanted), arg(
 					nullptr) {
 	}
 
@@ -330,6 +330,7 @@ public:
 	quux::CryptoConnectInterestSet* cconnect_interest_set;
 
 	bool* read_wanted;
+	bool* write_wanted;
 
 	// handy slot for application code to associate an arbitrary structure
 	void* arg;
@@ -340,7 +341,7 @@ public:
 	explicit quux_stream_client_s(quux_peer_client_s* peer) :
 			quux_stream_s(Type::CLIENT, peer,
 					&peer->session.crypto_connected,
-					&peer->session.cconnect_interest_set, &stream.read_wanted),
+					&peer->session.cconnect_interest_set, &stream.read_wanted, &stream.write_wanted),
 					stream(peer->session.GetNextOutgoingStreamId(),
 					&peer->session, this) {
 	}
@@ -366,7 +367,7 @@ public:
 	explicit quux_stream_server_s(quux_peer_server_s* peer) :
 			quux_stream_s(Type::CLIENT, peer,
 					&server_crypto_connected, &server_cconnect_interest_set,
-					&stream.read_wanted), stream(
+					&stream.read_wanted, &stream.write_wanted), stream(
 					peer->session.GetNextOutgoingStreamId(), &peer->session,
 					this) {
 	}
@@ -396,7 +397,7 @@ public:
 			quux::client::Session* session) :
 			quux_stream_s(Type::CLIENT, session->peer_ctx,
 					&server_crypto_connected, &server_cconnect_interest_set,
-					&stream.read_wanted), stream(id, session, this) {
+					&stream.read_wanted, &stream.write_wanted), stream(id, session, this) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
@@ -425,7 +426,7 @@ public:
 			quux::server::Session* session) :
 			quux_stream_s(Type::SERVER, session->peer_ctx,
 					&server_crypto_connected, &server_cconnect_interest_set,
-					&stream.read_wanted), stream(id, session, this) {
+					&stream.read_wanted, &stream.write_wanted), stream(id, session, this) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
@@ -943,13 +944,8 @@ size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 	net::QuicConsumedData consumed(stream->WritevData(&iov));
 
 	if (consumed.bytes_consumed == 0) {
-		// FIXME: add a callback for the flow controller and whatever
-		// else becoming unblocked
-		log("ERROR: Sorry no writes yet\n");
+		*stream->write_wanted = true;
 	}
-
-	// XXX: somehow indicate the socket as needing flush
-
 	return consumed.bytes_consumed;
 }
 
