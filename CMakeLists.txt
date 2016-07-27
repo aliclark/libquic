@@ -159,7 +159,7 @@ set(
 	src/net/base/host_port_pair.cc
 	src/net/base/address_family.cc
 	src/net/base/port_util.cc
-	src/net/base/url_util.cc
+	src/net/base/url_util2.cc
 	src/net/base/parse_number.cc
 	src/net/base/arena.cc
 
