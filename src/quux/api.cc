@@ -700,18 +700,7 @@ static void quux_peer_libevent_cb(int socket, short what, void* arg) {
 	}
 }
 
-} // namespace
-
-int quux_init_loop(void) {
-
-	if (quux::event_base) {
-		quux::log("Cannot use quux_init with libevent initialisation\n");
-		return -1;
-	}
-
-	if (mainepolld == -1) {
-		return -1;
-	}
+static void quux_init_common(void) {
 
 	for (int i = 0; i < NUM_MESSAGES; ++i) {
 		// used by both peer and listen messages, not at same time
@@ -730,6 +719,10 @@ int quux_init_loop(void) {
 	crypto_server_config.AddDefaultConfig(helper.GetRandomGenerator(),
 			helper.GetClock(), net::QuicCryptoServerConfig::ConfigOptions());
 
+	char quuxLogName[255];
+	snprintf(quuxLogName, 255, "/tmp/quux.log.%d", getpid());
+	//log_fileh = fopen(quuxLogName, "w");
+
 #if 0
 	// required for logging
 	base::CommandLine::Init(0, nullptr);
@@ -746,6 +739,22 @@ int quux_init_loop(void) {
 	logging::SetMinLogLevel(-1);
 #endif
 
+}
+
+} // namespace
+
+int quux_init_loop(void) {
+
+	if (quux::event_base) {
+		quux::log("Cannot use quux_init with libevent initialisation\n");
+		return -1;
+	}
+
+	if (mainepolld == -1) {
+		return -1;
+	}
+
+	quux_init_common();
 
 	return 0;
 }
@@ -761,10 +770,7 @@ int event_add(struct event *ev, const struct timeval *timeout);
 void quux_event_base_loop_init(struct event_base *base) {
 	quux::event_base = base;
 
-	char logName[255];
-	snprintf(logName, 255, "/tmp/quux.log.%d", getpid());
-
-	log_fileh = fopen(logName, "w");
+	quux_init_common();
 }
 
 quux_listener quux_listen(const struct sockaddr* self_sockaddr,
