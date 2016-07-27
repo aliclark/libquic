@@ -70,7 +70,6 @@ public:
 		iov[num].iov_len = buf_len;
 		num++;
 
-		quux::log("client appended packet for %p\n", peer);
 		writes_ready_set->insert(peer);
 		return net::WriteResult(net::WRITE_STATUS_OK, buf_len);
 	}

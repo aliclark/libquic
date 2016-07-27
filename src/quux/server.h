@@ -79,7 +79,6 @@ public:
 				&out_messages[num].msg_hdr.msg_namelen);
 		num++;
 
-		quux::log("server appended packet for %p\n", ctx);
 		writes_ready_set->insert(ctx);
 		return net::WriteResult(net::WRITE_STATUS_OK, buf_len);
 	}

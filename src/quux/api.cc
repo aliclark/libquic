@@ -611,6 +611,12 @@ static void quux_listen_cb(const net::QuicTime& approx_time,
 		(void) peer_endpoint.FromSockAddr(
 				(struct sockaddr*) &listen_sockaddrs[i],
 				sizeof(struct sockaddr_in6));
+
+		quux::log("listener %s read %d packet from %s on sock %d\n",
+				self_endpoint.ToString().c_str(),
+				listen_messages[i].msg_len,
+				peer_endpoint.ToString().c_str(), ctx->sd);
+
 		dispatcher.ProcessPacket(self_endpoint, peer_endpoint, packet);
 	}
 }
@@ -626,7 +632,7 @@ static void quux_listen_libevent_cb(int socket, short what, void* arg) {
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	net::IPEndPoint peer_endpoint;
 
-#ifdef SHADOW
+#ifndef SHADOW
 	listen_messages[0].msg_len = recvfrom(ctx->sd, iov[0].iov_base,
 			iov[0].iov_len, 0, (struct sockaddr*) &listen_sockaddrs[0],
 			&listen_messages[0].msg_hdr.msg_namelen);
@@ -642,6 +648,12 @@ static void quux_listen_libevent_cb(int socket, short what, void* arg) {
 		(void) peer_endpoint.FromSockAddr(
 				(struct sockaddr*) &listen_sockaddrs[i],
 				sizeof(struct sockaddr_in6));
+
+		quux::log("listener %s read %d packet from %s on sock %d\n",
+				self_endpoint.ToString().c_str(),
+				listen_messages[i].msg_len,
+				peer_endpoint.ToString().c_str(), ctx->sd);
+
 		dispatcher.ProcessPacket(self_endpoint, peer_endpoint, packet);
 	}
 
@@ -661,12 +673,17 @@ static void quux_peer_cb(const net::QuicTime& approx_time,
 	int num = 1;
 #else
 	int num = recvmmsg(ctx->sd, peer_messages, NUM_MESSAGES, 0, nullptr);
+	//quux::log("client read %d packets from %d\n", num, ctx->sd);
 #endif
-	quux::log("peer read %d packets from %d\n", num, ctx->sd);
 
 	for (int i = 0; i < num; ++i) {
 		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
 				peer_messages[i].msg_len, approx_time);
+
+		quux::log("client %s read %d packet from %s on sock %d\n",
+				self_endpoint.ToString().c_str(),
+				peer_messages[i].msg_len,
+				peer_endpoint.ToString().c_str(), ctx->sd);
 
 		connection.ProcessUdpPacket(self_endpoint, peer_endpoint, packet);
 	}
@@ -689,12 +706,17 @@ static void quux_peer_libevent_cb(int socket, short what, void* arg) {
 	int num = 1;
 #else
 	int num = recvmmsg(ctx->sd, peer_messages, NUM_MESSAGES, 0, nullptr);
+	//quux::log("client read %d packets from %d\n", num, ctx->sd);
 #endif
-	quux::log("peer read %d packets from %d\n", num, ctx->sd);
 
 	for (int i = 0; i < num; ++i) {
 		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
 				peer_messages[i].msg_len, approx_time);
+
+		quux::log("client %s read %d packet from %s on sock %d\n",
+				self_endpoint.ToString().c_str(),
+				peer_messages[i].msg_len,
+				peer_endpoint.ToString().c_str(), ctx->sd);
 
 		connection.ProcessUdpPacket(self_endpoint, peer_endpoint, packet);
 	}
@@ -1114,7 +1136,7 @@ void quux_loop(void) {
 #else
 			int sent = sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
 #endif
-			quux::log("server wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
+			quux::log("listener wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
 			// XXX: for now we just drop anything that didn't successfully send
 			*ctx->num = 0;
 		}
@@ -1154,10 +1176,15 @@ void quux_event_base_loop_before(void) {
  */
 void quux_event_base_loop_after(void) {
 	for (auto& peer : client_writes_ready_set) {
-#ifdef SHADOW
+#ifndef SHADOW
 		for (int i = 0; i < *peer->num; ++i) {
 			send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
 					peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
+
+			quux::log("client %s wrote %d packet to %s on sock %d\n",
+					peer->self_endpoint.ToString().c_str(),
+					peer->out_messages[i].msg_hdr.msg_iov->iov_len,
+					peer->peer_endpoint.ToString().c_str(), peer->sd);
 		}
 #else
 		int sent = sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
@@ -1169,16 +1196,26 @@ void quux_event_base_loop_after(void) {
 	client_writes_ready_set.clear();
 
 	for (auto& ctx : listen_writes_ready_set) {
-#ifdef SHADOW
+#ifndef SHADOW
 		for (int i = 0; i < *ctx->num; ++i) {
 			sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
 					ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
 					(struct sockaddr*) ctx->out_messages[i].msg_hdr.msg_name,
 					ctx->out_messages[i].msg_hdr.msg_namelen);
+
+			net::IPEndPoint their_end;
+			(void) their_end.FromSockAddr(
+					(struct sockaddr*) ctx->out_messages[i].msg_hdr.msg_name,
+					ctx->out_messages[i].msg_hdr.msg_namelen);
+
+			quux::log("listener %s wrote %d packet to %s on sock %d\n",
+					ctx->self_endpoint.ToString().c_str(),
+					ctx->out_messages[i].msg_hdr.msg_iov->iov_len,
+					their_end.ToString().c_str(), ctx->sd);
 		}
 #else
 		int sent = sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
-		quux::log("client wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
+		quux::log("listener wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
 #endif
 		// XXX: for now we just drop anything that didn't successfully send
 		*ctx->num = 0;
