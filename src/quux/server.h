@@ -58,7 +58,7 @@ public:
 			out_messages[i].msg_hdr.msg_iov = &iov[i];
 			out_messages[i].msg_hdr.msg_iovlen = 1;
 			out_messages[i].msg_hdr.msg_name = &out_sockaddrs[i];
-			out_messages[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+			out_messages[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in6);
 		}
 	}
 
@@ -104,7 +104,7 @@ public:
 	uint8_t buf[net::kMaxPacketSize * NUM_OUT_MESSAGES];
 	struct iovec iov[NUM_OUT_MESSAGES];
 	struct mmsghdr out_messages[NUM_OUT_MESSAGES];
-	struct sockaddr_in out_sockaddrs[NUM_OUT_MESSAGES];
+	struct sockaddr_in6 out_sockaddrs[NUM_OUT_MESSAGES];
 	int num = 0;
 
 	std::set<quux_listener>* writes_ready_set;

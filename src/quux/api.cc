@@ -150,7 +150,8 @@ uint8_t buf[net::kMaxPacketSize * NUM_MESSAGES];
 struct iovec iov[NUM_MESSAGES];
 struct mmsghdr peer_messages[NUM_MESSAGES];
 struct mmsghdr listen_messages[NUM_MESSAGES];
-struct sockaddr_in listen_sockaddrs[NUM_MESSAGES];
+// Storage large enough for IPv6, but can be used for IPv4
+struct sockaddr_in6 listen_sockaddrs[NUM_MESSAGES];
 // TODO: create a struct of the above structs for better per-packet cache locality?
 
 static FILE* log_fileh = stderr;
@@ -588,10 +589,9 @@ static void quux_listen_cb(const net::QuicTime& approx_time,
 				listen_messages[i].msg_len, approx_time);
 		(void) peer_endpoint.FromSockAddr(
 				(struct sockaddr*) &listen_sockaddrs[i],
-				sizeof(struct sockaddr_in));
+				sizeof(struct sockaddr_in6));
 		dispatcher.ProcessPacket(self_endpoint, peer_endpoint, packet);
 	}
-
 }
 
 // Called *often*
@@ -619,7 +619,7 @@ static void quux_listen_libevent_cb(int socket, short what, void* arg) {
 				listen_messages[i].msg_len, approx_time);
 		(void) peer_endpoint.FromSockAddr(
 				(struct sockaddr*) &listen_sockaddrs[i],
-				sizeof(struct sockaddr_in));
+				sizeof(struct sockaddr_in6));
 		dispatcher.ProcessPacket(self_endpoint, peer_endpoint, packet);
 	}
 
@@ -704,9 +704,8 @@ int quux_init_loop(void) {
 		peer_messages[i].msg_hdr.msg_iov = &iov[i];
 		peer_messages[i].msg_hdr.msg_iovlen = 1;
 
-		// XXX: this assumes IPv4
 		listen_messages[i].msg_hdr.msg_name = (void*) &listen_sockaddrs[i];
-		listen_messages[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+		listen_messages[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in6);
 		listen_messages[i].msg_hdr.msg_iov = &iov[i];
 		listen_messages[i].msg_hdr.msg_iovlen = 1;
 	}
@@ -754,14 +753,20 @@ void quux_event_base_loop_init(struct event_base *base) {
 quux_listener quux_listen(const struct sockaddr* self_sockaddr,
 		quux_connected connected_cb) {
 
-	// Possible support for INET6 in future
-	if (self_sockaddr->sa_family != AF_INET) {
-		log("Sorry, socket type currently unsupported\n");
+	socklen_t self_sockaddr_len;
+
+	if (self_sockaddr->sa_family == AF_INET) {
+		self_sockaddr_len = sizeof(struct sockaddr_in);
+
+	} else if (self_sockaddr->sa_family == AF_INET6) {
+		self_sockaddr_len = sizeof(struct sockaddr_in6);
+
+	} else {
+		log("Sorry, listen socket type currently unsupported: %d\n", self_sockaddr->sa_family);
 		return nullptr;
 	}
-	socklen_t self_sockaddr_len = sizeof(struct sockaddr_in);
 
-	int sd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+	int sd = socket(self_sockaddr->sa_family, SOCK_DGRAM | SOCK_NONBLOCK, 0);
 	if (sd < 0) {
 		log("%s", strerror(errno));
 		return nullptr;
@@ -821,26 +826,42 @@ void* quux_get_stream_context(quux_stream stream) {
 
 quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) {
 
-	// Possible support for INET6 in future
-	if (peer_sockaddr->sa_family != AF_INET) {
-		log("Sorry, socket type currently unsupported\n");
+	struct sockaddr_in6 self_sockaddr;
+	socklen_t peer_sockaddr_len;
+
+	if (peer_sockaddr->sa_family == AF_INET) {
+		struct sockaddr_in* self_sockaddr_in = (struct sockaddr_in*)&self_sockaddr;
+		peer_sockaddr_len = sizeof(struct sockaddr_in);
+		self_sockaddr_in->sin_family = AF_INET;
+		self_sockaddr_in->sin_port = 0;
+		self_sockaddr_in->sin_addr.s_addr = 0;
+#ifdef SHADOW
+		self_sockaddr_in->sin_addr.s_addr = htonl(0x0b000001);
+#endif
+
+	} else if (peer_sockaddr->sa_family == AF_INET6) {
+#ifdef SHADOW
+		log("not sure ip6 on shadow will work yet\n");
+		return nullptr
+#else
+		peer_sockaddr_len = sizeof(struct sockaddr_in6);
+		memset(&self_sockaddr, 0, sizeof(struct sockaddr_in6));
+		self_sockaddr.sin6_family = AF_INET6;
+#endif
+
+	} else {
+		log("Sorry, open socket type currently unsupported: %d\n", peer_sockaddr->sa_family);
 		return nullptr;
 	}
-	socklen_t peer_sockaddr_len = sizeof(struct sockaddr_in);
+
+	socklen_t self_sockaddr_len = peer_sockaddr_len;
 
 	/* create the client socket and get a socket descriptor */
-	int sd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+	int sd = socket(peer_sockaddr->sa_family, SOCK_DGRAM | SOCK_NONBLOCK, 0);
 	if (sd < 0) {
 		log("%s", strerror(errno));
 		return nullptr;
 	}
-
-#ifdef SHADOW
-	struct sockaddr_in self_sockaddr = {AF_INET, 0, {htonl(0x0b000001)}};
-#else
-	struct sockaddr_in self_sockaddr = { AF_INET, 0, { 0 } };
-#endif
-	socklen_t self_sockaddr_len = sizeof(self_sockaddr);
 
 	// set address for recvmmsg to use
 	if (bind(sd, (struct sockaddr*) &self_sockaddr, self_sockaddr_len) < 0) {
