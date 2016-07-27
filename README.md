@@ -76,7 +76,7 @@ of `$ cmake -GNinja ..`.
 ```bash
 for f in $(find src/quux -name '*.cc'); do c++ -g -std=c++11 -fPIC -Isrc -Isrc/third_party/protobuf/src -c -o $f.o $f; done
 ar r libquux.a $(find src/quux/ -name '*.o')
-cc -g -Isrc -Isrc/third_party/protobuf/src -o apitest src/quux/apitest.c libquux.a src/quux/event_stub.c -Lbuild -Lbuild/boringssl/crypto -Lbuild/protobuf -lquic -lcrypto -lprotobuf -lpthread -lstdc++ -lm
+cc -g -Isrc/quux -o apitest src/quux/apitest.c libquux.a src/quux/event_stub.c -Lbuild -Lbuild/protobuf -Lbuild/boringssl/crypto -lquic -lprotobuf -lbsslcrypto -lstdc++ -lpthread -lm
 ```
 
 To run, type `./apitest` in one terminal and `./apitest client` in another.
