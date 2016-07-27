@@ -186,14 +186,14 @@ public:
 
 	const int sd;
 	const net::IPEndPoint self_endpoint;
-	quux_connected connected_cb;
+	quux_connected const connected_cb;
 	const cbpair_t cbp;
 
 	quux::Dispatcher dispatcher;
 
 	// handy references
-	struct mmsghdr* out_messages;
-	int* num;
+	struct mmsghdr* const out_messages;
+	int* const num;
 };
 
 class quux_peer_s {
@@ -213,7 +213,7 @@ public:
 	virtual ~quux_peer_s() {
 	}
 
-	Type type;
+	const Type type;
 
 	const int sd;
 	const net::IPEndPoint self_endpoint;
@@ -257,8 +257,8 @@ public:
 	quux::client::Session session;
 
 	// handy references
-	struct mmsghdr* out_messages;
-	int* num;
+	struct mmsghdr* const out_messages;
+	int* const num;
 };
 
 class quux_peer_server_s: public quux_peer_s {
@@ -318,19 +318,19 @@ public:
 	virtual ~quux_stream_s() {
 	}
 
-	Type type;
+	const Type type;
 
-	quux_peer peer;
+	quux_peer const peer;
 
 	quux_cb quux_writeable;
 	quux_cb quux_readable;
 
 	// handy references
-	bool *crypto_connected;
-	quux::CryptoConnectInterestSet* cconnect_interest_set;
+	bool* const crypto_connected;
+	quux::CryptoConnectInterestSet* const cconnect_interest_set;
 
-	bool* read_wanted;
-	bool* write_wanted;
+	bool* const read_wanted;
+	bool* const write_wanted;
 
 	// handy slot for application code to associate an arbitrary structure
 	void* arg;
@@ -450,6 +450,13 @@ public:
 };
 
 namespace quux {
+
+void log(const char *format, ...) {
+	va_list ap;
+	va_start(ap, format);
+	vfprintf(log_fileh, format, ap);
+	va_end(ap);
+}
 
 quux_cb accept_cb(quux_peer ctx) {
 	return ctx->accept_cb;
@@ -584,6 +591,7 @@ static void quux_listen_cb(const net::QuicTime& approx_time,
 #else
 	int num = recvmmsg(ctx->sd, listen_messages, NUM_MESSAGES, 0, nullptr);
 #endif
+	quux::log("listener read %d packets from %d\n", num, ctx->sd);
 
 	for (int i = 0; i < num; ++i) {
 		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
@@ -614,6 +622,7 @@ static void quux_listen_libevent_cb(int socket, short what, void* arg) {
 #else
 	int num = recvmmsg(ctx->sd, listen_messages, NUM_MESSAGES, 0, nullptr);
 #endif
+	quux::log("listener read %d packets from %d\n", num, ctx->sd);
 
 	for (int i = 0; i < num; ++i) {
 		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
@@ -641,6 +650,7 @@ static void quux_peer_cb(const net::QuicTime& approx_time,
 #else
 	int num = recvmmsg(ctx->sd, peer_messages, NUM_MESSAGES, 0, nullptr);
 #endif
+	quux::log("peer read %d packets from %d\n", num, ctx->sd);
 
 	for (int i = 0; i < num; ++i) {
 		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
@@ -668,6 +678,7 @@ static void quux_peer_libevent_cb(int socket, short what, void* arg) {
 #else
 	int num = recvmmsg(ctx->sd, peer_messages, NUM_MESSAGES, 0, nullptr);
 #endif
+	quux::log("peer read %d packets from %d\n", num, ctx->sd);
 
 	for (int i = 0; i < num; ++i) {
 		net::QuicReceivedPacket packet((char*) iov[i].iov_base,
@@ -677,19 +688,12 @@ static void quux_peer_libevent_cb(int socket, short what, void* arg) {
 	}
 }
 
-static void log(const char *format, ...) {
-	va_list ap;
-	va_start(ap, format);
-	fprintf(log_fileh, format, ap);
-	va_end(ap);
-}
-
 } // namespace
 
 int quux_init_loop(void) {
 
 	if (quux::event_base) {
-		log("Cannot use quux_init with libevent initialisation\n");
+		quux::log("Cannot use quux_init with libevent initialisation\n");
 		return -1;
 	}
 
@@ -763,23 +767,24 @@ quux_listener quux_listen(const struct sockaddr* self_sockaddr,
 		self_sockaddr_len = sizeof(struct sockaddr_in6);
 
 	} else {
-		log("Sorry, listen socket type currently unsupported: %d\n", self_sockaddr->sa_family);
+		quux::log("Sorry, listen socket type currently unsupported: %d\n", self_sockaddr->sa_family);
 		return nullptr;
 	}
 
 	int sd = socket(self_sockaddr->sa_family, SOCK_DGRAM | SOCK_NONBLOCK, 0);
 	if (sd < 0) {
-		log("%s", strerror(errno));
+		quux::log("%s", strerror(errno));
 		return nullptr;
 	}
 
 	if (bind(sd, self_sockaddr, self_sockaddr_len) < 0) {
-		log("%s", strerror(errno));
+		quux::log("%s", strerror(errno));
 		return nullptr;
 	}
 
 	net::IPEndPoint self_endpoint;
 	if (!self_endpoint.FromSockAddr(self_sockaddr, self_sockaddr_len)) {
+		quux::log("Couldn't get endpoint from sockaddr\n");
 		return nullptr;
 	}
 
@@ -789,13 +794,13 @@ quux_listener quux_listen(const struct sockaddr* self_sockaddr,
 		struct event *ev = event_new(quux::event_base, sd,
 		EV_READ | EV_PERSIST, quux_listen_libevent_cb, ctx);
 		if (event_add(ev, nullptr) < 0) {
-			log("event_add fail\n");
+			quux::log("event_add fail\n");
 			return nullptr;
 		}
 	} else {
 		struct epoll_event ev = { EPOLLIN, { (void*) &ctx->cbp } };
 		if (epoll_ctl(mainepolld, EPOLL_CTL_ADD, sd, &ev) < 0) {
-			log("%s", strerror(errno));
+			quux::log("%s", strerror(errno));
 			return nullptr;
 		}
 	}
@@ -851,7 +856,7 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 #endif
 
 	} else {
-		log("Sorry, open socket type currently unsupported: %d\n", peer_sockaddr->sa_family);
+		quux::log("Sorry, open socket type currently unsupported: %d\n", peer_sockaddr->sa_family);
 		return nullptr;
 	}
 
@@ -860,25 +865,25 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 	/* create the client socket and get a socket descriptor */
 	int sd = socket(peer_sockaddr->sa_family, SOCK_DGRAM | SOCK_NONBLOCK, 0);
 	if (sd < 0) {
-		log("%s", strerror(errno));
+		quux::log("%s", strerror(errno));
 		return nullptr;
 	}
 
 	// set address for recvmmsg to use
 	if (bind(sd, (struct sockaddr*) &self_sockaddr, self_sockaddr_len) < 0) {
-		log("%s", strerror(errno));
+		quux::log("%s", strerror(errno));
 		return nullptr;
 	}
 
 	// set address for sendmmsg to use
 	if (connect(sd, peer_sockaddr, peer_sockaddr_len) < 0) {
-		log("%s", strerror(errno));
+		quux::log("%s", strerror(errno));
 		return nullptr;
 	}
 
 	if (getsockname(sd, (struct sockaddr*) &self_sockaddr, &self_sockaddr_len)
 			< 0) {
-		log("%s", strerror(errno));
+		quux::log("%s", strerror(errno));
 		return nullptr;
 	}
 
@@ -887,9 +892,11 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 
 	if (!self_endpoint.FromSockAddr((struct sockaddr*) &self_sockaddr,
 			self_sockaddr_len)) {
+		quux::log("Couldn't get self endpoint from sockaddr\n");
 		return nullptr;
 	}
 	if (!peer_endpoint.FromSockAddr(peer_sockaddr, peer_sockaddr_len)) {
+		quux::log("Couldn't get peer endpoint from sockaddr\n");
 		return nullptr;
 	}
 
@@ -899,7 +906,7 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 		struct event *ev = event_new(quux::event_base, sd,
 		EV_READ | EV_PERSIST, quux_peer_libevent_cb, ctx);
 		if (event_add(ev, nullptr) < 0) {
-			log("event_add fail\n");
+			quux::log("event_add fail\n");
 			return nullptr;
 		}
 	} else {
@@ -990,7 +997,7 @@ void quux_loop(void) {
 	int ed = mainepolld;
 
 	if (quux::event_base) {
-		log("Cannot use quux_loop with libevent initialisation\n");
+		quux::log("Cannot use quux_loop with libevent initialisation\n");
 		return;
 	}
 
@@ -1070,8 +1077,9 @@ void quux_loop(void) {
 						peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
 			}
 #else
-			sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
+			int sent = sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
 #endif
+			quux::log("client wrote %d packets to %d (%d successful)\n", *peer->num, peer->sd, sent);
 			// XXX: for now we just drop anything that didn't successfully send
 			*peer->num = 0;
 		}
@@ -1086,8 +1094,9 @@ void quux_loop(void) {
 						ctx->out_messages[i].msg_hdr.msg_namelen);
 			}
 #else
-			sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
+			int sent = sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
 #endif
+			quux::log("server wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
 			// XXX: for now we just drop anything that didn't successfully send
 			*ctx->num = 0;
 		}
@@ -1133,7 +1142,8 @@ void quux_event_base_loop_after(void) {
 					peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
 		}
 #else
-		sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
+		int sent = sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
+		quux::log("client wrote %d packets to %d (%d successful)\n", *peer->num, peer->sd, sent);
 #endif
 		// XXX: for now we just drop anything that didn't successfully send
 		*peer->num = 0;
@@ -1149,7 +1159,8 @@ void quux_event_base_loop_after(void) {
 					ctx->out_messages[i].msg_hdr.msg_namelen);
 		}
 #else
-		sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
+		int sent = sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
+		quux::log("client wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
 #endif
 		// XXX: for now we just drop anything that didn't successfully send
 		*ctx->num = 0;

@@ -65,7 +65,7 @@ public:
 
 	const int sd;
 	const net::IPEndPoint self_endpoint;
-	quux_listener ctx;
+	quux_listener const ctx;
 
 	quux::server::packet::Writer writer;
 };

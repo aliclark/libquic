@@ -16,6 +16,8 @@ quux_cb accept_cb(quux_peer ctx);
 quux_cb readable_cb(quux_stream ctx);
 quux_cb writeable_cb(quux_stream ctx);
 
+void log(const char* format, ...);
+
 extern struct event_base *event_base;
 
 namespace server {

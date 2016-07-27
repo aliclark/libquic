@@ -47,7 +47,7 @@ public:
 
 	std::vector<std::string> certs;
 	scoped_refptr<ProofSource::Chain> chain;
-	std::string signed_certificate_timestamp = "sc_timestamp";
+	const std::string signed_certificate_timestamp = "sc_timestamp";
 };
 
 class Verifier: public net::ProofVerifier {

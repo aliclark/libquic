@@ -47,7 +47,7 @@ static const int NUM_OUT_MESSAGES = 256;
  */
 class Writer: public net::QuicPacketWriter {
 public:
-	Writer(std::set<quux_listener>* writes_ready_set, quux_listener ctx) :
+	Writer(std::set<quux_listener>* writes_ready_set, quux_listener ctx) : QuicPacketWriter(),
 			writes_ready_set(writes_ready_set), ctx(ctx) {
 
 		memset(out_messages, 0, sizeof(out_messages));
@@ -79,6 +79,7 @@ public:
 				&out_messages[num].msg_hdr.msg_namelen);
 		num++;
 
+		quux::log("server appended packet for %p\n", ctx);
 		writes_ready_set->insert(ctx);
 		return net::WriteResult(net::WRITE_STATUS_OK, buf_len);
 	}
@@ -107,9 +108,9 @@ public:
 	struct sockaddr_in6 out_sockaddrs[NUM_OUT_MESSAGES];
 	int num = 0;
 
-	std::set<quux_listener>* writes_ready_set;
+	std::set<quux_listener>* const writes_ready_set;
 
-	quux_listener ctx;
+	quux_listener const ctx;
 };
 
 } /* namespace packet */
@@ -191,8 +192,8 @@ public:
 		return QuicSession::GetNextOutgoingStreamId();
 	}
 
-	quux_listener listener_ctx;
-	quux_peer peer_ctx;
+	quux_listener const listener_ctx;
+	quux_peer const peer_ctx;
 };
 
 // FIXME: hack at the QuicDispatcher to make it not depend on SPDY :(
@@ -245,7 +246,7 @@ public:
 		QuicSpdyStream::CloseWriteSide();
 	}
 
-	quux_stream ctx;
+	quux_stream const ctx;
 
 	bool read_wanted;
 	bool write_wanted;

@@ -70,6 +70,7 @@ public:
 		iov[num].iov_len = buf_len;
 		num++;
 
+		quux::log("client appended packet for %p\n", peer);
 		writes_ready_set->insert(peer);
 		return net::WriteResult(net::WRITE_STATUS_OK, buf_len);
 	}
@@ -97,8 +98,8 @@ public:
 	struct mmsghdr out_messages[NUM_OUT_MESSAGES];
 	int num;
 
-	quux_peer_client_s* peer;
-	quux::WritesReadySet* writes_ready_set;
+	quux_peer_client_s* const peer;
+	quux::WritesReadySet* const writes_ready_set;
 };
 
 } /* namespace packet */
@@ -178,7 +179,7 @@ public:
 		return QuicSession::GetNextOutgoingStreamId();
 	}
 
-	quux_peer peer_ctx;
+	quux_peer const peer_ctx;
 
 	net::QuicCryptoClientStream crypto_stream;
 
@@ -239,12 +240,12 @@ public:
 		ReliableQuicStream::CloseWriteSide();
 	}
 
-	quux_stream ctx;
+	quux_stream const ctx;
 
 	bool read_wanted;
 	bool write_wanted;
 
-	quux::client::Session* sessionptr;
+	quux::client::Session* const sessionptr;
 };
 
 } /* namespace client */

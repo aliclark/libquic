@@ -45,9 +45,9 @@ public:
 		return buffer_allocator;
 	}
 
-	const net::QuicClock* clock;
-	quux::IsaacRandom* quic_random;
-	net::QuicBufferAllocator* buffer_allocator;
+	const net::QuicClock* const clock;
+	quux::IsaacRandom* const quic_random;
+	net::QuicBufferAllocator* const buffer_allocator;
 };
 
 class Logger: public net::QuicConnectionDebugVisitor {

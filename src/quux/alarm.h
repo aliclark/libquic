@@ -74,7 +74,7 @@ public:
 		QuicAlarm::Fire();
 	}
 
-	quux::TimeToAlarmMap* alarm_time_map;
+	quux::TimeToAlarmMap* const alarm_time_map;
 
 	bool gogogo;
 };
@@ -146,7 +146,7 @@ public:
 				new Alarm(std::move(delegate), alarm_time_map));
 	}
 
-	quux::TimeToAlarmMap* alarm_time_map;
+	quux::TimeToAlarmMap* const alarm_time_map;
 };
 
 class LibeventFactory: public net::QuicAlarmFactory {
