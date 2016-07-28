@@ -1,17 +1,27 @@
 
-#include <stdint.h>
-#include <ctype.h>
 #include <stdio.h>
-#include <arpa/inet.h>
-
+#include <netinet/in.h>
+#include <stdarg.h>
+#include <ctype.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/socket.h>
 #include <quux.h>
 
 #define BUF_LEN 8192
 static uint8_t buf[BUF_LEN];
 size_t bytes_read;
 
+void info(const char *format, ...) {
+	va_list ap;
+	va_start(ap, format);
+	vfprintf(stderr, format, ap);
+	fputc('\n', stderr);
+	va_end(ap);
+}
+
 void server_writeable(quux_stream stream) {
-	printf("server_writeable\n");
+	info("server_writeable");
 
 	int i;
 	for (i = 0; i < bytes_read; ++i) {
@@ -21,36 +31,36 @@ void server_writeable(quux_stream stream) {
 	size_t wrote = quux_write(stream, buf, bytes_read);
 
 	if (wrote == 0) {
-		printf("quux_write: 0\n");
+		info("quux_write: 0");
 		/* we'll get another callback when it's ready */
 		return;
 	}
 
-	printf("quux_write: %s", buf);
+	info("quux_write: %s", buf);
 }
 void server_readable(quux_stream stream) {
-	printf("server_readable\n");
+	info("server_readable");
 
 	bytes_read = quux_read(stream, buf, BUF_LEN-1);
 	buf[bytes_read] = '\0';
 
 	if (bytes_read == 0) {
-		printf("quux_read: 0\n");
+		info("quux_read: 0");
 		/* we'll get another callback when it's ready */
 		return;
 	}
 
-	printf("quux_read: %s", buf);
+	info("quux_read: %s", buf);
 	server_writeable(stream);
 }
 void server_accept(quux_stream stream) {
-	printf("server_accept\n");
+	info("server_accept");
 	quux_set_readable_cb(stream, server_readable);
 	quux_set_writeable_cb(stream, server_writeable);
 	server_readable(stream);
 }
 void server_connected(quux_peer peer) {
-	printf("server_connected\n");
+	info("server_connected");
 	quux_set_accept_cb(peer, server_accept);
 
 	void client_readable(quux_stream stream);
@@ -62,35 +72,35 @@ void server_connected(quux_peer peer) {
 }
 
 void client_readable(quux_stream stream) {
-	printf("client_readable\n");
+	info("client_readable");
 
 	bytes_read = quux_read(stream, buf, BUF_LEN-1);
 	buf[bytes_read] = '\0';
 
 	if (bytes_read == 0) {
-		printf("quux_read: 0\n");
+		info("quux_read: 0");
 		/* we'll get another callback when it's ready */
 		return;
 	}
 
-	printf("quux_read: %s", buf);
+	info("quux_read: %s", buf);
 }
 void client_writeable(quux_stream stream) {
-	printf("client_writeable\n");
+	info("client_writeable");
 	const uint8_t hello[] = { 'h', 'e', 'l', 'l', 'o', '!', '\n' };
 	size_t wrote = quux_write(stream, hello, sizeof(hello));
 
 	if (wrote == 0) {
-		printf("quux_write: 0\n");
+		info("quux_write: 0");
 		/* we'll get another callback when it's ready */
 		return;
 	}
 
-	printf("quux_write: %s", hello);
+	info("quux_write: %s", hello);
 	client_readable(stream);
 }
 void client_accept(quux_stream stream) {
-	printf("client_accept\n");
+	info("client_accept");
 	quux_set_readable_cb(stream, server_readable);
 	quux_set_writeable_cb(stream, server_writeable);
 	server_readable(stream);
@@ -119,7 +129,7 @@ int main(int argc, char** argv) {
 		quux_listen((struct sockaddr*) &addr, server_connected);
 	}
 
-	printf("quux_loop()\n");
+	info("quux_loop()");
 	quux_loop();
 
 	return 0;
