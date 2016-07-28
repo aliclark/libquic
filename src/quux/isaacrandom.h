@@ -265,7 +265,7 @@ public:
 		return rand();
 	}
 
-	void Reseed(const void* additional_entropy, size_t entropy_len) override {
+	void Reseed(const void* additional_entropy, size_t /*entropy_len*/) override {
 	}
 };
 

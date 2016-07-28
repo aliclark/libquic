@@ -33,9 +33,9 @@ public:
 		chain = new net::ProofSource::Chain(certs);
 	}
 
-	bool GetProof(const net::IPAddress& server_ip, const std::string& hostname,
-			const std::string& server_config, net::QuicVersion quic_version,
-			base::StringPiece chlo_hash, bool ecdsa_ok,
+	bool GetProof(const net::IPAddress& /*server_ip*/, const std::string& /*hostname*/,
+			const std::string& /*server_config*/, net::QuicVersion /*quic_version*/,
+			base::StringPiece /*chlo_hash*/, bool /*ecdsa_ok*/,
 			scoped_refptr<Chain>* out_chain, std::string* out_signature,
 			std::string* out_leaf_cert_sct) override {
 
@@ -53,13 +53,13 @@ public:
 class Verifier: public net::ProofVerifier {
 public:
 	net::QuicAsyncStatus VerifyProof(const std::string& hostname,
-			const uint16_t port, const std::string& server_config,
-			net::QuicVersion quic_version, base::StringPiece chlo_hash,
-			const std::vector<std::string>& certs, const std::string& cert_sct,
-			const std::string& signature,
-			const net::ProofVerifyContext* context, std::string* error_details,
-			std::unique_ptr<net::ProofVerifyDetails>* details,
-			net::ProofVerifierCallback* callback) override {
+			const uint16_t /*port*/, const std::string& /*server_config*/,
+			net::QuicVersion /*quic_version*/, base::StringPiece /*chlo_hash*/,
+			const std::vector<std::string>& /*certs*/, const std::string& /*cert_sct*/,
+			const std::string& /*signature*/,
+			const net::ProofVerifyContext* /*context*/, std::string* /*error_details*/,
+			std::unique_ptr<net::ProofVerifyDetails>* /*details*/,
+			net::ProofVerifierCallback* /*callback*/) override {
 
 		// sure whatever
 		return net::QuicAsyncStatus::QUIC_SUCCESS;
@@ -68,7 +68,7 @@ public:
 
 class Handler: public net::QuicCryptoClientStream::ProofHandler {
 public:
-	void OnProofValid(const net::QuicCryptoClientConfig::CachedState& cached)
+	void OnProofValid(const net::QuicCryptoClientConfig::CachedState& /*cached*/)
 			override {
 	}
 	void OnProofVerifyDetailsAvailable(

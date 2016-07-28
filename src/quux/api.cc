@@ -615,7 +615,7 @@ static void quux_listen_cb(const net::QuicTime& approx_time,
 }
 
 // Called *often*
-static void quux_listen_libevent_cb(int socket, short what, void* arg) {
+static void quux_listen_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 	quux_listener ctx = (quux_listener) arg;
 	if (approx_time_ticks.is_null()) {
 		approx_time_ticks = base::TimeTicks::Now();
@@ -683,7 +683,7 @@ static void quux_peer_cb(const net::QuicTime& approx_time,
 }
 
 // Called *often*
-static void quux_peer_libevent_cb(int socket, short what, void* arg) {
+static void quux_peer_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 	quux_peer_client_s* ctx = (quux_peer_client_s*) arg;
 	if (approx_time_ticks.is_null()) {
 		approx_time_ticks = base::TimeTicks::Now();

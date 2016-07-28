@@ -57,8 +57,8 @@ public:
 	}
 
 	net::WriteResult WritePacket(const char* buffer, size_t buf_len,
-			const net::IPAddress& self_address,
-			const net::IPEndPoint& peer_address, net::PerPacketOptions* options)
+			const net::IPAddress& /*self_address*/,
+			const net::IPEndPoint& /*peer_address*/, net::PerPacketOptions* /*options*/)
 					override {
 
 		if (num >= NUM_OUT_MESSAGES || buf_len > net::kMaxPacketSize) {
@@ -87,7 +87,7 @@ public:
 	}
 
 	net::QuicByteCount GetMaxPacketSize(
-			const net::IPEndPoint& peer_address) const override {
+			const net::IPEndPoint& /*peer_address*/) const override {
 		// TODO: confer with other impls
 		return net::kMaxPacketSize;
 	}
@@ -111,8 +111,8 @@ public:
 			net::QuicCryptoClientConfig* crypto_config,
 			net::QuicCryptoClientStream::ProofHandler* proof_handler, quux_peer peer_ctx) :
 
-			QuicSession(connection, config), crypto_stream(server_id, this,
-					verify_context, crypto_config, proof_handler), peer_ctx(peer_ctx) {
+			QuicSession(connection, config), peer_ctx(peer_ctx), crypto_stream(server_id, this,
+					verify_context, crypto_config, proof_handler) {
 
 		Initialize();
 		crypto_stream.CryptoConnect();
@@ -136,7 +136,7 @@ public:
 	}
 
 	net::ReliableQuicStream* CreateOutgoingDynamicStream(
-			net::SpdyPriority priority) override {
+			net::SpdyPriority /*priority*/) override {
 		assert(0);
 		return nullptr;
 	}

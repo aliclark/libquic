@@ -63,8 +63,8 @@ public:
 	}
 
 	net::WriteResult WritePacket(const char* buffer, size_t buf_len,
-			const net::IPAddress& self_address,
-			const net::IPEndPoint& peer_address, net::PerPacketOptions* options)
+			const net::IPAddress& /*self_address*/,
+			const net::IPEndPoint& peer_address, net::PerPacketOptions* /*options*/)
 					override {
 
 		if (num >= NUM_OUT_MESSAGES || buf_len > net::kMaxPacketSize) {
@@ -96,7 +96,7 @@ public:
 	}
 
 	net::QuicByteCount GetMaxPacketSize(
-			const net::IPEndPoint& peer_address) const override {
+			const net::IPEndPoint& /*peer_address*/) const override {
 		// TODO: confer with other impls
 		return net::kMaxPacketSize;
 	}
@@ -127,9 +127,9 @@ public:
 		return net::QuicConnectionId(connection_id + 1);
 	}
 
-	bool CanAcceptClientHello(const net::CryptoHandshakeMessage& message,
-			const net::IPEndPoint& self_address,
-			std::string* error_details) const override {
+	bool CanAcceptClientHello(const net::CryptoHandshakeMessage& /*message*/,
+			const net::IPEndPoint& /*self_address*/,
+			std::string* /*error_details*/) const override {
 
 		// XXX: ming
 		return true;
@@ -166,7 +166,7 @@ public:
 		return quux::server::stream::get_incoming_spdy(ctx);
 	}
 
-	net::QuicSpdyStream* CreateOutgoingDynamicStream(net::SpdyPriority priority)
+	net::QuicSpdyStream* CreateOutgoingDynamicStream(net::SpdyPriority /*priority*/)
 			override {
 		assert(0);
 		return nullptr;

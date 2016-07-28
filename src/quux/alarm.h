@@ -138,7 +138,7 @@ public:
 
 namespace alarm {
 
-static void libevent_timeout_cb(int socket, short what, void* arg) {
+static void libevent_timeout_cb(int /*socket*/, short /*what*/, void* arg) {
 	LibeventAlarm* alarm = (LibeventAlarm*)arg;
 	alarm->Fire();
 }
