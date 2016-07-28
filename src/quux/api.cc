@@ -68,7 +68,7 @@ namespace {
 
 #define EVER_AND_EVER ;;
 
-typedef const void (*cbfunc)(const net::QuicTime& approx_time, void* ctx);
+typedef void (*cbfunc)(const net::QuicTime& approx_time, void* ctx);
 
 typedef struct cbpair {
 	cbfunc callback;
