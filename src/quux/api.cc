@@ -306,12 +306,10 @@ public:
 	enum Type {
 		SERVER, CLIENT
 	};
-	explicit quux_stream_s(Type type, quux_peer peer, bool *crypto_connected,
-			quux::CryptoConnectInterestSet* cconnect_interest_set,
+	explicit quux_stream_s(Type type, quux_peer peer,
 			bool* read_wanted, bool* write_wanted) :
 			type(type), peer(peer), quux_writeable(nullptr), quux_readable(
-					nullptr), crypto_connected(crypto_connected), cconnect_interest_set(
-					cconnect_interest_set), read_wanted(read_wanted), write_wanted(write_wanted), arg(
+					nullptr), read_wanted(read_wanted), write_wanted(write_wanted), arg(
 					nullptr) {
 	}
 
@@ -332,10 +330,6 @@ public:
 	quux_cb quux_writeable;
 	quux_cb quux_readable;
 
-	// handy references
-	bool* const crypto_connected;
-	quux::CryptoConnectInterestSet* const cconnect_interest_set;
-
 	bool* const read_wanted;
 	bool* const write_wanted;
 
@@ -346,9 +340,7 @@ public:
 class quux_stream_client_s: public quux_stream_s {
 public:
 	explicit quux_stream_client_s(quux_peer_client_s* peer) :
-			quux_stream_s(Type::CLIENT, peer,
-					&peer->session.crypto_connected,
-					&peer->session.cconnect_interest_set, &stream.read_wanted, &stream.write_wanted),
+			quux_stream_s(Type::CLIENT, peer, &stream.read_wanted, &stream.write_wanted),
 					stream(peer->session.GetNextOutgoingStreamId(),
 					&peer->session, this) {
 	}
@@ -373,7 +365,6 @@ class quux_stream_server_s: public quux_stream_s {
 public:
 	explicit quux_stream_server_s(quux_peer_server_s* peer) :
 			quux_stream_s(Type::CLIENT, peer,
-					&server_crypto_connected, &server_cconnect_interest_set,
 					&stream.read_wanted, &stream.write_wanted), stream(
 					peer->session.GetNextOutgoingStreamId(), &peer->session,
 					this) {
@@ -392,9 +383,6 @@ public:
 		stream.CloseWriteSide();
 	}
 
-	bool server_crypto_connected = true;
-	quux::CryptoConnectInterestSet server_cconnect_interest_set;
-
 	quux::server::Stream stream;
 };
 
@@ -403,7 +391,6 @@ public:
 	explicit quux_stream_client_incoming_s(net::QuicStreamId id,
 			quux::client::Session* session) :
 			quux_stream_s(Type::CLIENT, session->peer_ctx,
-					&server_crypto_connected, &server_cconnect_interest_set,
 					&stream.read_wanted, &stream.write_wanted), stream(id, session, this) {
 	}
 
@@ -419,10 +406,6 @@ public:
 	void CloseWriteSide() override {
 		stream.CloseWriteSide();
 	}
-
-	// crypto is necessarily already set up for incoming streams
-	bool server_crypto_connected = true;
-	quux::CryptoConnectInterestSet server_cconnect_interest_set;
 
 	quux::client::Stream stream;
 };
@@ -432,7 +415,6 @@ public:
 	explicit quux_stream_server_incoming_s(net::QuicStreamId id,
 			quux::server::Session* session) :
 			quux_stream_s(Type::SERVER, session->peer_ctx,
-					&server_crypto_connected, &server_cconnect_interest_set,
 					&stream.read_wanted, &stream.write_wanted), stream(id, session, this) {
 	}
 
@@ -448,10 +430,6 @@ public:
 	void CloseWriteSide() override {
 		stream.CloseWriteSide();
 	}
-
-	// crypto is necessarily already set up for incoming streams
-	bool server_crypto_connected = true;
-	quux::CryptoConnectInterestSet server_cconnect_interest_set;
 
 	quux::server::Stream stream;
 };
@@ -997,13 +975,7 @@ quux_peer quux_get_peer(quux_stream stream) {
 
 size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 	struct iovec iov = { (void*) buf, count };
-	if (!*stream->crypto_connected) {
-		stream->cconnect_interest_set->insert(stream);
-		return 0;
-	}
-
 	net::QuicConsumedData consumed(stream->WritevData(&iov));
-
 	if (consumed.bytes_consumed == 0) {
 		*stream->write_wanted = true;
 	}

@@ -112,8 +112,7 @@ public:
 			net::QuicCryptoClientStream::ProofHandler* proof_handler, quux_peer peer_ctx) :
 
 			QuicSession(connection, config), crypto_stream(server_id, this,
-					verify_context, crypto_config, proof_handler), crypto_connected(
-			false), peer_ctx(peer_ctx) {
+					verify_context, crypto_config, proof_handler), peer_ctx(peer_ctx) {
 
 		Initialize();
 		crypto_stream.CryptoConnect();
@@ -146,19 +145,6 @@ public:
 		return &crypto_stream;
 	}
 
-	void OnCryptoHandshakeEvent(CryptoHandshakeEvent event) override {
-		QuicSession::OnCryptoHandshakeEvent(event);
-
-		if (!crypto_connected) {
-			crypto_connected = true;
-
-			for (quux_stream ctx : cconnect_interest_set) {
-				quux::writeable_cb(ctx)(ctx);
-			}
-			cconnect_interest_set.clear();
-		}
-	}
-
 	/// exposing protected methods
 
 	void RegisterStream(net::QuicStreamId id, net::SpdyPriority priority) {
@@ -181,10 +167,6 @@ public:
 	quux_peer const peer_ctx;
 
 	net::QuicCryptoClientStream crypto_stream;
-
-	bool crypto_connected;
-
-	CryptoConnectInterestSet cconnect_interest_set;
 };
 
 class Stream: public net::ReliableQuicStream {
