@@ -205,17 +205,19 @@ public:
 	}
 
 	void OnDataAvailable() override {
-		if (read_wanted) {
-			read_wanted = false;
-			quux::readable_cb(ctx)(ctx);
+		if (!read_wanted) {
+			return;
 		}
+		read_wanted = false;
+		quux::readable_cb(ctx)(ctx);
 	}
 
 	void OnCanWrite() override {
-		if (write_wanted) {
-			write_wanted = false;
-			quux::writeable_cb(ctx)(ctx);
+		if (!write_wanted) {
+			return;
 		}
+		write_wanted = false;
+		quux::writeable_cb(ctx)(ctx);
 	}
 
 	/// exposing protected methods
