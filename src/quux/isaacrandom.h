@@ -247,16 +247,17 @@ public:
 	}
 
 	void RandBytes(void* data, size_t len) override {
-		ub8* dst = (ub8*) data;
-		for (size_t i = 0; i < (len/8); i += 8) {
-			dst[i] = rand();
+		ub8* dst = (ub8*)data;
+		for (size_t i = 0; i < (len/8); ++i) {
+			*dst++ = rand();
 		}
 
 		ub8 last = rand();
 		ub1* lastb = (ub1*)&last;
-		ub1* dstb = (ub1*) data;
 
-		for (size_t j = 0; j < (len % 8); ++j) {
+		ub1* dstb = (ub1*)dst;
+
+		for (size_t j = 0; j < (len%8); ++j) {
 			dstb[j] = lastb[j];
 		}
 	}
