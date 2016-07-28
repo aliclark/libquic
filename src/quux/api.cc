@@ -315,6 +315,7 @@ public:
 
 	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
 
+	virtual size_t peek(uint8_t* dst, size_t count) = 0;
 	virtual int Readv(const struct iovec* iov) = 0;
 
 	virtual void StopReading() = 0;
@@ -348,6 +349,9 @@ public:
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
 		return stream.WritevData(iov, 1, false, nullptr);
 	}
+	size_t peek(uint8_t* dst, size_t count) override {
+		return stream.peek(dst, count);
+	}
 	int Readv(const struct iovec* iov) override {
 		return stream.Readv(iov, 1);
 	}
@@ -373,6 +377,9 @@ public:
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
 		return stream.WritevData(iov, 1, false, nullptr);
 	}
+	size_t peek(uint8_t* dst, size_t count) override {
+		return stream.peek(dst, count);
+	}
 	int Readv(const struct iovec* iov) override {
 		return stream.Readv(iov, 1);
 	}
@@ -397,6 +404,9 @@ public:
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
 		return stream.WritevData(iov, 1, false, nullptr);
 	}
+	size_t peek(uint8_t* dst, size_t count) override {
+		return stream.peek(dst, count);
+	}
 	int Readv(const struct iovec* iov) override {
 		return stream.Readv(iov, 1);
 	}
@@ -420,6 +430,9 @@ public:
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
 		return stream.WritevData(iov, 1, false, nullptr);
+	}
+	size_t peek(uint8_t* dst, size_t count) override {
+		return stream.peek(dst, count);
 	}
 	int Readv(const struct iovec* iov) override {
 		return stream.Readv(iov, 1);
@@ -990,7 +1003,12 @@ void quux_write_close(quux_stream stream) {
 }
 
 int quux_write_is_closed(quux_stream stream) {
+	// TODO
 	return 0;
+}
+
+size_t quux_peek(quux_stream stream, uint8_t* buf, size_t count) {
+	return stream->peek(buf, count);
 }
 
 size_t quux_read(quux_stream stream, uint8_t* buf, size_t count) {
@@ -1008,6 +1026,7 @@ void quux_read_close(quux_stream stream) {
 }
 
 int quux_read_is_closed(quux_stream stream) {
+	// TODO
 	return 0;
 }
 

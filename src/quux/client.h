@@ -212,6 +212,28 @@ public:
 	}
 
 	// access to protected stuff
+
+	// We really want QuicStreamSequencerBuffer::Readv
+	// but alas it's private and hidden away :(
+	size_t peek(uint8_t* dest, size_t count) {
+		size_t seen = 0;
+		size_t rem = count;
+		while (rem) {
+			struct iovec iov;
+			if (!sequencer()->GetReadableRegions(&iov, 1)) {
+				return seen;
+			}
+			if (iov.iov_len > rem) {
+				iov.iov_len = rem;
+			}
+			memcpy(dest+seen, iov.iov_base, iov.iov_len);
+			seen += iov.iov_len;
+			rem -= iov.iov_len;
+		}
+	    return seen;
+	}
+
+	// access to protected stuff
 	int Readv(const struct iovec* iov, size_t iov_len) {
 		return sequencer()->Readv(iov, iov_len);
 	}

@@ -136,6 +136,18 @@ int quux_write_is_closed(quux_stream stream);
 /**
  * Read up to 'count' octets from the stream into 'buf'
  *
+ * Unlike quux_read, this will not consume the data from the stream,
+ * so a subsequent peek or read will return the same data.
+ *
+ * Returned amount tells us how much data was transfered.
+ * 0 indicates that no data could be read at this time, but the callback has been re-registered.
+ * Call 'quux_read_is_closed' to find out if the stream is no longer readable.
+ */
+size_t quux_peek(quux_stream stream, uint8_t* buf, size_t count);
+
+/**
+ * Read up to 'count' octets from the stream into 'buf'
+ *
  * Returned amount tells us how much data was transfered.
  * 0 indicates that no data could be read at this time, but the callback has been re-registered.
  * Call 'quux_read_is_closed' to find out if the stream is no longer readable.
