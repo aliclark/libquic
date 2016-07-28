@@ -52,6 +52,21 @@ void* quux_get_peer_context(quux_peer);
 void quux_set_stream_context(quux_stream, void* ctx);
 void* quux_get_stream_context(quux_stream);
 
+#define QUUX_NO_ERR 0
+
+/**
+ * Return the most recent error major code number.
+ */
+int quux_errno(void);
+
+/**
+ * Human-readable English description of the error provided as a helpful utility.
+ * Includes a trailing \n\0. Don't try to parse this, it may change.
+ */
+const char* quux_error_description(void);
+
+void quux_reset_errno(void);
+
 /**
  * Start a listener for new streams on IPv4 addr.
  *

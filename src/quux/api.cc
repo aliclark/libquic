@@ -159,6 +159,8 @@ struct mmsghdr listen_messages[NUM_MESSAGES];
 struct sockaddr_in6 listen_sockaddrs[NUM_MESSAGES];
 // TODO: create a struct of the above structs for better per-packet cache locality?
 
+static int q_errno = QUUX_NO_ERR;
+
 static FILE* log_fileh = stderr;
 
 static void quux_listen_cb(const net::QuicTime& approx_time, quux_listener ctx);
@@ -793,6 +795,18 @@ void quux_event_base_loop_init(struct event_base *base) {
 	quux::event_base = base;
 
 	quux_init_common();
+}
+
+int quux_errno(void) {
+	return q_errno;
+}
+
+const char* quux_error_description(void) {
+	return "All is fine\n";
+}
+
+void quux_reset_errno(void) {
+	q_errno = QUUX_NO_ERR;
 }
 
 quux_listener quux_listen(const struct sockaddr* self_sockaddr,
