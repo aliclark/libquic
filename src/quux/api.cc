@@ -450,6 +450,9 @@ public:
 namespace quux {
 
 void log(const char *format, ...) {
+	if (!log_fileh) {
+		return;
+	}
 	va_list ap;
 	va_start(ap, format);
 	vfprintf(log_fileh, format, ap);
@@ -626,7 +629,7 @@ static void quux_listen_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	net::IPEndPoint peer_endpoint;
 
-#ifndef SHADOW
+#ifdef SHADOW
 	listen_messages[0].msg_len = recvfrom(ctx->sd, iov[0].iov_base,
 			iov[0].iov_len, 0, (struct sockaddr*) &listen_sockaddrs[0],
 			&listen_messages[0].msg_hdr.msg_namelen);
@@ -650,7 +653,6 @@ static void quux_listen_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 
 		dispatcher.ProcessPacket(self_endpoint, peer_endpoint, packet);
 	}
-
 }
 
 // Called *often*
@@ -737,7 +739,8 @@ static void quux_init_common(void) {
 
 	char quuxLogName[255];
 	snprintf(quuxLogName, 255, "/tmp/quux.log.%d", getpid());
-	log_fileh = fopen(quuxLogName, "w");
+	//log_fileh = fopen(quuxLogName, "w");
+	log_fileh = nullptr;
 
 #if 0
 	// required for logging
@@ -1182,7 +1185,7 @@ void quux_event_base_loop_before(void) {
  */
 void quux_event_base_loop_after(void) {
 	for (auto& peer : client_writes_ready_set) {
-#ifndef SHADOW
+#ifdef SHADOW
 		for (int i = 0; i < *peer->num; ++i) {
 			int result = send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
 					peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
@@ -1202,7 +1205,7 @@ void quux_event_base_loop_after(void) {
 	client_writes_ready_set.clear();
 
 	for (auto& ctx : listen_writes_ready_set) {
-#ifndef SHADOW
+#ifdef SHADOW
 		for (int i = 0; i < *ctx->num; ++i) {
 			int result = sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
 					ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
