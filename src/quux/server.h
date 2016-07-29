@@ -67,9 +67,15 @@ public:
 			const net::IPEndPoint& peer_address, net::PerPacketOptions* /*options*/)
 					override {
 
-		if (num >= NUM_OUT_MESSAGES || buf_len > net::kMaxPacketSize) {
-			// XXX: just tail drop for now...
-			return net::WriteResult(net::WRITE_STATUS_OK, buf_len);
+		if (buf_len > net::kMaxPacketSize) {
+			quux::log("listener tried to write packet larger than kMaxPacketSize\n");
+			return net::WriteResult(net::WRITE_STATUS_ERROR, 0);
+		}
+
+		if (num >= NUM_OUT_MESSAGES) {
+			quux::log("listener packet-write buffer is full, doing early send\n");
+			sendmmsg(ctx->sd, out_messages, num, 0);
+			num = 0;
 		}
 
 		memcpy(&buf[net::kMaxPacketSize * num], buffer, buf_len);
