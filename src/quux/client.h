@@ -42,8 +42,8 @@ static const int NUM_OUT_MESSAGES = 256;
 
 class Writer: public net::QuicPacketWriter {
 public:
-	Writer(quux::WritesReadySet* writes_ready_set, quux_peer_client_s* peer) :
-			QuicPacketWriter(), num(0), peer(peer), writes_ready_set(
+	Writer(int sd, quux_peer_client_s* peer, quux::WritesReadySet* writes_ready_set) :
+			QuicPacketWriter(), num(0), sd(sd), peer(peer), writes_ready_set(
 					writes_ready_set) {
 
 		memset(out_messages, 0, sizeof(out_messages));
@@ -68,7 +68,7 @@ public:
 
 		if (num >= NUM_OUT_MESSAGES) {
 			quux::log("client packet-write buffer is full, doing early send\n");
-			sendmmsg(peer->sd, out_messages, num, 0);
+			sendmmsg(sd, out_messages, num, 0);
 			num = 0;
 		}
 
@@ -103,6 +103,7 @@ public:
 	struct mmsghdr out_messages[NUM_OUT_MESSAGES];
 	int num;
 
+	const int sd;
 	quux_peer_client_s* const peer;
 	quux::WritesReadySet* const writes_ready_set;
 };

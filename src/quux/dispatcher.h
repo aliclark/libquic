@@ -44,7 +44,7 @@ public:
 			QuicDispatcher(config, crypto_config, supported_versions,
 					std::move(helper), std::move(session_helper),
 					std::move(alarm_factory)), sd(sd), self_endpoint(
-					self_endpoint), ctx(ctx), writer(writes_ready_set, ctx) {
+					self_endpoint), ctx(ctx), writer(sd, ctx, writes_ready_set) {
 
 		InitializeWithWriter(&writer);
 	}
@@ -59,7 +59,6 @@ public:
 				compressed_certs_cache(), ctx);
 
 		quux::server::connected_cb(ctx)(conn_ctx);
-
 		return quux::server::session::get(conn_ctx);
 	}
 

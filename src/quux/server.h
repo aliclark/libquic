@@ -47,8 +47,9 @@ static const int NUM_OUT_MESSAGES = 256;
  */
 class Writer: public net::QuicPacketWriter {
 public:
-	Writer(std::set<quux_listener>* writes_ready_set, quux_listener ctx) : QuicPacketWriter(),
-			writes_ready_set(writes_ready_set), ctx(ctx) {
+	Writer(int sd, quux_listener ctx, std::set<quux_listener>* writes_ready_set) :
+			QuicPacketWriter(), sd(sd), ctx(ctx), writes_ready_set(
+					writes_ready_set) {
 
 		memset(out_messages, 0, sizeof(out_messages));
 
@@ -74,7 +75,7 @@ public:
 
 		if (num >= NUM_OUT_MESSAGES) {
 			quux::log("listener packet-write buffer is full, doing early send\n");
-			sendmmsg(ctx->sd, out_messages, num, 0);
+			sendmmsg(sd, out_messages, num, 0);
 			num = 0;
 		}
 
@@ -113,9 +114,9 @@ public:
 	struct sockaddr_in6 out_sockaddrs[NUM_OUT_MESSAGES];
 	int num = 0;
 
-	std::set<quux_listener>* const writes_ready_set;
-
+	const int sd;
 	quux_listener const ctx;
+	std::set<quux_listener>* const writes_ready_set;
 };
 
 } /* namespace packet */

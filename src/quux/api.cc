@@ -237,8 +237,8 @@ public:
 	explicit quux_peer_client_s(int sd, const net::IPEndPoint& self_endpoint,
 			const net::IPEndPoint& peer_endpoint) :
 			quux_peer_s(Type::CLIENT, sd, self_endpoint, peer_endpoint), cbp( {
-					(cbfunc) quux_peer_cb, (void*) this }), writer(
-					&client_writes_ready_set, this), connection(
+					(cbfunc) quux_peer_cb, (void*) this }), writer(sd, this,
+					&client_writes_ready_set), connection(
 					net::QuicConnectionId(quux_random.RandUint64() & ~1),
 					peer_endpoint, &helper,
 					quux::event_base ?
