@@ -453,6 +453,7 @@ void log(const char *format, ...) {
 	va_list ap;
 	va_start(ap, format);
 	vfprintf(log_fileh, format, ap);
+	fflush(log_fileh);
 	va_end(ap);
 }
 
@@ -736,7 +737,7 @@ static void quux_init_common(void) {
 
 	char quuxLogName[255];
 	snprintf(quuxLogName, 255, "/tmp/quux.log.%d", getpid());
-	//log_fileh = fopen(quuxLogName, "w");
+	log_fileh = fopen(quuxLogName, "w");
 
 #if 0
 	// required for logging
