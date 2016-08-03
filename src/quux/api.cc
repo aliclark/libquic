@@ -890,19 +890,11 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 		self_sockaddr_in->sin_family = AF_INET;
 		self_sockaddr_in->sin_port = 0;
 		self_sockaddr_in->sin_addr.s_addr = 0;
-#ifdef SHADOW
-		self_sockaddr_in->sin_addr.s_addr = htonl(0x0b000001);
-#endif
 
 	} else if (peer_sockaddr->sa_family == AF_INET6) {
-#ifdef SHADOW
-		log("not sure ip6 on shadow will work yet\n");
-		return nullptr
-#else
 		peer_sockaddr_len = sizeof(struct sockaddr_in6);
 		memset(&self_sockaddr, 0, sizeof(struct sockaddr_in6));
 		self_sockaddr.sin6_family = AF_INET6;
-#endif
 
 	} else {
 		quux::log("Sorry, open socket type currently unsupported: %d\n", peer_sockaddr->sa_family);
