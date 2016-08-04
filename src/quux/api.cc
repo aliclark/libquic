@@ -75,13 +75,11 @@ typedef struct cbpair {
 	void* ctx;
 } cbpair_t;
 
-// Ming. Used by common_cert_sets(CommonCertSets::GetInstanceQUIC()) at least
-static const base::AtExitManager exit_manager;
-
-static const net::QuicVersionVector supported_versions(
-		net::QuicSupportedVersions());
-
-static const net::QuicWallTime NULL_WALL_TIME = net::QuicWallTime::Zero();
+static
+#if !SHADOW
+const
+#endif
+net::QuicWallTime NULL_WALL_TIME = net::QuicWallTime::Zero();
 net::QuicWallTime cur_wall_time = NULL_WALL_TIME;
 static base::TimeTicks approx_time_ticks = base::TimeTicks::Now();
 
@@ -109,9 +107,15 @@ public:
 	}
 };
 
-static base::StringPiece source_address_token_secret;
+static
+#if !SHADOW
+const
+#endif
+net::QuicVersionVector supported_versions(net::QuicSupportedVersions());
 
 #if SHADOW
+
+static const base::AtExitManager* exit_manager;
 
 static const CacheClock* quic_clock;
 static quux::IsaacRandom* quux_random;
@@ -133,7 +137,22 @@ static quux::proof::Handler* proof_handler;
 
 static net::QuicCryptoServerConfig* crypto_server_config;
 
+static net::QuicConfig* create_config(void) {
+	net::QuicConfig* config = new net::QuicConfig();
+	// TODO: confirm this fixes max_open_incoming/outgoing_streams to be high enough
+	config->SetMaxStreamsPerConnection(65536, 0); // "lots"
+	config->SetInitialStreamFlowControlWindowToSend(64 * 1024);
+	config->SetInitialSessionFlowControlWindowToSend(1 * 1024 * 1024);
+	return config;
+}
+static const net::QuicConfig* config;
+
 #else
+
+// Ming. Used by common_cert_sets(CommonCertSets::GetInstanceQUIC()) at least
+static const base::AtExitManager exit_manager;
+
+static base::StringPiece source_address_token_secret;
 
 static const CacheClock quic_clock;
 static quux::IsaacRandom quux_random;
@@ -156,7 +175,6 @@ static quux::proof::Handler proof_handler;
 
 static net::QuicCryptoServerConfig crypto_server_config(
 		source_address_token_secret, &quux_random, new quux::proof::Source());
-#endif
 
 static net::QuicConfig create_config(void) {
 	net::QuicConfig config;
@@ -167,6 +185,8 @@ static net::QuicConfig create_config(void) {
 	return config;
 }
 static const net::QuicConfig config = create_config();
+
+#endif
 
 static const int EPOLL_SIZE_HINT = 256;
 // Setting this too low could be bad for socket QoS,
@@ -202,11 +222,11 @@ public:
 			quux_connected connected_cb) :
 
 			sd(sd), self_endpoint(self_endpoint), connected_cb(connected_cb), cbp(
-					{ (cbfunc) quux_listen_cb, (void*) this }), dispatcher(config,
+					{ (cbfunc) quux_listen_cb, (void*) this }), dispatcher(
 #if SHADOW
-					crypto_server_config,
+							*config, crypto_server_config,
 #else
-					&crypto_server_config,
+							config, &crypto_server_config,
 #endif
 					supported_versions, std::unique_ptr<quux::connection::Helper>(
 #if SHADOW
@@ -303,9 +323,13 @@ public:
 							(net::QuicAlarmFactory*) &alarm_factory,
 #endif
 							&writer,
-					false, net::Perspective::IS_CLIENT, supported_versions), session(
-					&connection, config,
-					net::QuicServerId(peer_endpoint.ToStringWithoutPort(),
+					false, net::Perspective::IS_CLIENT, supported_versions), session(&connection,
+#if SHADOW
+							*config,
+#else
+							config,
+#endif
+							net::QuicServerId(peer_endpoint.ToStringWithoutPort(),
 							peer_endpoint.port(), net::PRIVACY_MODE_DISABLED),
 #if SHADOW
 							verify_context, crypto_client_config, proof_handler,
@@ -785,6 +809,15 @@ static void quux_peer_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 static void quux_init_common(void) {
 
 #if SHADOW
+	exit_manager = new base::AtExitManager();
+
+	NULL_WALL_TIME = net::QuicWallTime::Zero();
+	cur_wall_time = NULL_WALL_TIME;
+	approx_time_ticks = base::TimeTicks::Now();
+
+	supported_versions = net::QuicSupportedVersions();
+	config = create_config();
+
 	quic_clock = new CacheClock();
 	quux_random = new quux::IsaacRandom();
 	buffer_allocator = new net::SimpleBufferAllocator();
@@ -801,6 +834,8 @@ static void quux_init_common(void) {
 	verify_context = new net::ProofVerifyContext();
 	crypto_client_config = new net::QuicCryptoClientConfig(new quux::proof::Verifier());
 	proof_handler = new quux::proof::Handler();
+
+	base::StringPiece source_address_token_secret;
 
 	crypto_server_config = new net::QuicCryptoServerConfig(
 			source_address_token_secret, quux_random,
