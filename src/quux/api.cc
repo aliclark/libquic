@@ -112,15 +112,23 @@ public:
 static const CacheClock quic_clock;
 static quux::IsaacRandom quux_random;
 static net::SimpleBufferAllocator buffer_allocator;
-static quux::connection::Helper helper((net::QuicClock*) &quic_clock,
+#if SHADOW
+static quux::connection::Helper* helper;
+#else
+static quux::connection::Helper helper(&quic_clock,
 		&quux_random, &buffer_allocator);
+#endif
 
 static quux::WritesReadySet client_writes_ready_set;
 typedef std::set<quux_listener> ListenWritesReadySet;
 static ListenWritesReadySet listen_writes_ready_set;
 
 static quux::TimeToAlarmMap time_to_alarm_map;
+#if SHADOW
+static quux::alarm::Factory* alarm_factory;
+#else
 static quux::alarm::Factory alarm_factory(&time_to_alarm_map);
+#endif
 static quux::alarm::LibeventFactory libevent_alarm_factory;
 
 static net::ProofVerifyContext verify_context;
@@ -128,8 +136,12 @@ static net::QuicCryptoClientConfig crypto_client_config(new quux::proof::Verifie
 static quux::proof::Handler proof_handler;
 
 static base::StringPiece source_address_token_secret;
+#if SHADOW
+static net::QuicCryptoServerConfig* crypto_server_config;
+#else
 static net::QuicCryptoServerConfig crypto_server_config(
 		source_address_token_secret, &quux_random, new quux::proof::Source());
+#endif
 
 static net::QuicConfig create_config(void) {
 	net::QuicConfig config;
@@ -176,7 +188,13 @@ public:
 
 			sd(sd), self_endpoint(self_endpoint), connected_cb(connected_cb), cbp(
 					{ (cbfunc) quux_listen_cb, (void*) this }), dispatcher(
-					config, &crypto_server_config, supported_versions,
+					config,
+#if SHADOW
+					crypto_server_config,
+#else
+					&crypto_server_config,
+#endif
+					supported_versions,
 					std::unique_ptr<quux::connection::Helper>(
 							new quux::connection::Helper(&quic_clock,
 									&quux_random, &buffer_allocator)),
@@ -240,10 +258,21 @@ public:
 					(cbfunc) quux_peer_cb, (void*) this }), writer(sd, this,
 					&client_writes_ready_set), connection(
 					net::QuicConnectionId(quux_random.RandUint64() & ~1),
-					peer_endpoint, &helper,
+					peer_endpoint,
+#if SHADOW
+					helper,
+#else
+					&helper,
+#endif
 					quux::event_base ?
 							(net::QuicAlarmFactory*) &libevent_alarm_factory :
-							(net::QuicAlarmFactory*) &alarm_factory, &writer,
+							(net::QuicAlarmFactory*)
+#if SHADOW
+							alarm_factory,
+#else
+							&alarm_factory,
+#endif
+							&writer,
 					false, net::Perspective::IS_CLIENT, supported_versions), session(
 					&connection, config,
 					net::QuicServerId(peer_endpoint.ToStringWithoutPort(),
@@ -720,6 +749,15 @@ static void quux_peer_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 
 static void quux_init_common(void) {
 
+#if SHADOW
+	helper = new quux::connection::Helper(&quic_clock, &quux_random,
+			&buffer_allocator);
+	alarm_factory = new quux::alarm::Factory(&time_to_alarm_map);
+	crypto_server_config = new net::QuicCryptoServerConfig(
+			source_address_token_secret, &quux_random,
+			new quux::proof::Source());
+#endif
+
 	for (int i = 0; i < NUM_MESSAGES; ++i) {
 		// used by both peer and listen messages, not at same time
 		iov[i].iov_base = (void*) &buf[net::kMaxPacketSize * i];
@@ -734,8 +772,13 @@ static void quux_init_common(void) {
 		listen_messages[i].msg_hdr.msg_iovlen = 1;
 	}
 
-	crypto_server_config.AddDefaultConfig(helper.GetRandomGenerator(),
-			helper.GetClock(), net::QuicCryptoServerConfig::ConfigOptions());
+#if SHADOW
+	crypto_server_config->AddDefaultConfig(&quux_random,
+			&quic_clock, net::QuicCryptoServerConfig::ConfigOptions());
+#else
+	crypto_server_config.AddDefaultConfig(&quux_random,
+			&quic_clock, net::QuicCryptoServerConfig::ConfigOptions());
+#endif
 
 	char quuxLogName[255];
 	snprintf(quuxLogName, 255, "/tmp/quux.log.%d", getpid());
