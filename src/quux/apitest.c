@@ -8,6 +8,8 @@
 #include <sys/socket.h>
 #include <quux.h>
 
+#define SHADOW 0
+
 #define BUF_LEN 8192
 static uint8_t buf[BUF_LEN];
 size_t bytes_read;
@@ -107,7 +109,7 @@ void client_accept(quux_stream stream) {
 }
 
 int main(int argc, char** argv) {
-#ifdef SHADOW
+#if SHADOW
 	struct sockaddr_in addr = { AF_INET, htons(8443), { htonl(0x0b000002) } };
 #else
 	struct sockaddr_in addr = { AF_INET, htons(8443), { htonl(INADDR_LOOPBACK) } };

@@ -4,8 +4,6 @@
 #include <cassert>
 #include <cstdio>
 
-#define SHADOW_NO
-
 #include <base/at_exit.h>
 #include <base/command_line.h>
 #include <base/logging.h>
@@ -47,6 +45,8 @@
 #include <set>
 #include <utility>
 #include <stdarg.h>
+
+#define SHADOW 0
 
 /*
  * TODO: comparisons against other impl to find missing things
@@ -592,7 +592,7 @@ static void quux_listen_cb(const net::QuicTime& approx_time,
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	net::IPEndPoint peer_endpoint;
 
-#ifdef SHADOW
+#if SHADOW
 	listen_messages[0].msg_len = recvfrom(ctx->sd, iov[0].iov_base,
 			iov[0].iov_len, 0, (struct sockaddr*) &listen_sockaddrs[0],
 			&listen_messages[0].msg_hdr.msg_namelen);
@@ -629,7 +629,7 @@ static void quux_listen_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	net::IPEndPoint peer_endpoint;
 
-#ifdef SHADOW
+#if SHADOW
 	listen_messages[0].msg_len = recvfrom(ctx->sd, iov[0].iov_base,
 			iov[0].iov_len, 0, (struct sockaddr*) &listen_sockaddrs[0],
 			&listen_messages[0].msg_hdr.msg_namelen);
@@ -663,7 +663,7 @@ static void quux_peer_cb(const net::QuicTime& approx_time,
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	const net::IPEndPoint& peer_endpoint = ctx->peer_endpoint;
 
-#ifdef SHADOW
+#if SHADOW
 	peer_messages[0].msg_len = recv(ctx->sd, iov[0].iov_base, iov[0].iov_len,
 			0);
 	int num = 1;
@@ -696,7 +696,7 @@ static void quux_peer_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	const net::IPEndPoint& peer_endpoint = ctx->peer_endpoint;
 
-#ifdef SHADOW
+#if SHADOW
 	peer_messages[0].msg_len = recv(ctx->sd, iov[0].iov_base, iov[0].iov_len,
 			0);
 	int num = 1;
@@ -1112,7 +1112,7 @@ void quux_loop(void) {
 		// XXX: After this point we don't have any code that could set a timer
 
 		for (auto& peer : client_writes_ready_set) {
-#ifdef SHADOW
+#if SHADOW
 			for (int i = 0; i < *peer->num; ++i) {
 				int result = send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
 						peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
@@ -1132,7 +1132,7 @@ void quux_loop(void) {
 		client_writes_ready_set.clear();
 
 		for (auto& ctx : listen_writes_ready_set) {
-#ifdef SHADOW
+#if SHADOW
 			for (int i = 0; i < *ctx->num; ++i) {
 				int result = sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
 						ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
@@ -1158,7 +1158,7 @@ void quux_loop(void) {
 		}
 		listen_writes_ready_set.clear();
 
-#ifdef SHADOW
+#if SHADOW
 		if (wake_after_millis == 0) {
 			wake_after_millis = 1;
 		}
@@ -1192,7 +1192,7 @@ void quux_event_base_loop_before(void) {
  */
 void quux_event_base_loop_after(void) {
 	for (auto& peer : client_writes_ready_set) {
-#ifdef SHADOW
+#if SHADOW
 		for (int i = 0; i < *peer->num; ++i) {
 			int result = send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
 					peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
@@ -1212,7 +1212,7 @@ void quux_event_base_loop_after(void) {
 	client_writes_ready_set.clear();
 
 	for (auto& ctx : listen_writes_ready_set) {
-#ifdef SHADOW
+#if SHADOW
 		for (int i = 0; i < *ctx->num; ++i) {
 			int result = sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
 					ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
