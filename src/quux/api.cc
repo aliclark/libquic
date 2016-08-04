@@ -1114,13 +1114,18 @@ void quux_loop(void) {
 		for (auto& peer : client_writes_ready_set) {
 #ifdef SHADOW
 			for (int i = 0; i < *peer->num; ++i) {
-				send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
+				int result = send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
 						peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
+
+				quux::log("client %s wrote %d packet to %s on sock %d, result: %d\n",
+						peer->self_endpoint.ToString().c_str(),
+						peer->out_messages[i].msg_hdr.msg_iov->iov_len,
+						peer->peer_endpoint.ToString().c_str(), peer->sd, result);
 			}
 #else
 			int sent = sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
-#endif
 			quux::log("client wrote %d packets to %d (%d successful)\n", *peer->num, peer->sd, sent);
+#endif
 			// XXX: for now we just drop anything that didn't successfully send
 			*peer->num = 0;
 		}
@@ -1129,15 +1134,25 @@ void quux_loop(void) {
 		for (auto& ctx : listen_writes_ready_set) {
 #ifdef SHADOW
 			for (int i = 0; i < *ctx->num; ++i) {
-				sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
+				int result = sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
 						ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
 						(struct sockaddr*) ctx->out_messages[i].msg_hdr.msg_name,
 						ctx->out_messages[i].msg_hdr.msg_namelen);
+
+				net::IPEndPoint their_end;
+				(void) their_end.FromSockAddr(
+						(struct sockaddr*) ctx->out_messages[i].msg_hdr.msg_name,
+						ctx->out_messages[i].msg_hdr.msg_namelen);
+
+				quux::log("listener %s wrote %d packet to %s on sock %d, result: %d\n",
+						ctx->self_endpoint.ToString().c_str(),
+						ctx->out_messages[i].msg_hdr.msg_iov->iov_len,
+						their_end.ToString().c_str(), ctx->sd, result);
 			}
 #else
 			int sent = sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
-#endif
 			quux::log("listener wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
+#endif
 			// XXX: for now we just drop anything that didn't successfully send
 			*ctx->num = 0;
 		}
