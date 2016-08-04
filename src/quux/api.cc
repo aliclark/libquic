@@ -109,36 +109,51 @@ public:
 	}
 };
 
+static base::StringPiece source_address_token_secret;
+
+#if SHADOW
+
+static const CacheClock* quic_clock;
+static quux::IsaacRandom* quux_random;
+static net::SimpleBufferAllocator* buffer_allocator;
+static quux::connection::Helper* helper;
+
+typedef std::set<quux_listener> ListenWritesReadySet;
+static quux::WritesReadySet* client_writes_ready_set;
+static ListenWritesReadySet* listen_writes_ready_set;
+
+static quux::TimeToAlarmMap* time_to_alarm_map;
+static quux::alarm::Factory* alarm_factory;
+
+static quux::alarm::LibeventFactory* libevent_alarm_factory;
+
+static net::ProofVerifyContext* verify_context;
+static net::QuicCryptoClientConfig* crypto_client_config;
+static quux::proof::Handler* proof_handler;
+
+static net::QuicCryptoServerConfig* crypto_server_config;
+
+#else
+
 static const CacheClock quic_clock;
 static quux::IsaacRandom quux_random;
 static net::SimpleBufferAllocator buffer_allocator;
-#if SHADOW
-static quux::connection::Helper* helper;
-#else
 static quux::connection::Helper helper(&quic_clock,
 		&quux_random, &buffer_allocator);
-#endif
 
-static quux::WritesReadySet client_writes_ready_set;
 typedef std::set<quux_listener> ListenWritesReadySet;
+static quux::WritesReadySet client_writes_ready_set;
 static ListenWritesReadySet listen_writes_ready_set;
 
 static quux::TimeToAlarmMap time_to_alarm_map;
-#if SHADOW
-static quux::alarm::Factory* alarm_factory;
-#else
 static quux::alarm::Factory alarm_factory(&time_to_alarm_map);
-#endif
+
 static quux::alarm::LibeventFactory libevent_alarm_factory;
 
 static net::ProofVerifyContext verify_context;
 static net::QuicCryptoClientConfig crypto_client_config(new quux::proof::Verifier());
 static quux::proof::Handler proof_handler;
 
-static base::StringPiece source_address_token_secret;
-#if SHADOW
-static net::QuicCryptoServerConfig* crypto_server_config;
-#else
 static net::QuicCryptoServerConfig crypto_server_config(
 		source_address_token_secret, &quux_random, new quux::proof::Source());
 #endif
@@ -187,26 +202,36 @@ public:
 			quux_connected connected_cb) :
 
 			sd(sd), self_endpoint(self_endpoint), connected_cb(connected_cb), cbp(
-					{ (cbfunc) quux_listen_cb, (void*) this }), dispatcher(
-					config,
+					{ (cbfunc) quux_listen_cb, (void*) this }), dispatcher(config,
 #if SHADOW
 					crypto_server_config,
 #else
 					&crypto_server_config,
 #endif
-					supported_versions,
-					std::unique_ptr<quux::connection::Helper>(
-							new quux::connection::Helper(&quic_clock,
-									&quux_random, &buffer_allocator)),
+					supported_versions, std::unique_ptr<quux::connection::Helper>(
+#if SHADOW
+							new quux::connection::Helper(quic_clock, quux_random, buffer_allocator)),
+#else
+							new quux::connection::Helper(&quic_clock, &quux_random, &buffer_allocator)),
+#endif
 					std::unique_ptr<quux::server::session::Helper>(
 							new quux::server::session::Helper()),
 					std::unique_ptr<net::QuicAlarmFactory>(
 							quux::event_base ?
 									(net::QuicAlarmFactory*) new quux::alarm::LibeventFactory() :
 									(net::QuicAlarmFactory*) new quux::alarm::Factory(
-											&time_to_alarm_map)), sd,
-					self_endpoint, &listen_writes_ready_set, this), out_messages(
-					dispatcher.writer.out_messages), num(&dispatcher.writer.num) {
+#if SHADOW
+											time_to_alarm_map)),
+#else
+											&time_to_alarm_map)),
+#endif
+											sd, self_endpoint,
+#if SHADOW
+					listen_writes_ready_set,
+#else
+					&listen_writes_ready_set,
+#endif
+					this), out_messages(dispatcher.writer.out_messages), num(&dispatcher.writer.num) {
 	}
 
 	const int sd;
@@ -256,8 +281,13 @@ public:
 			const net::IPEndPoint& peer_endpoint) :
 			quux_peer_s(Type::CLIENT, sd, self_endpoint, peer_endpoint), cbp( {
 					(cbfunc) quux_peer_cb, (void*) this }), writer(sd, this,
-					&client_writes_ready_set), connection(
-					net::QuicConnectionId(quux_random.RandUint64() & ~1),
+#if SHADOW
+							client_writes_ready_set),
+							connection(net::QuicConnectionId(quux_random->RandUint64() & ~1),
+#else
+							&client_writes_ready_set),
+							connection(net::QuicConnectionId(quux_random.RandUint64() & ~1),
+#endif
 					peer_endpoint,
 #if SHADOW
 					helper,
@@ -265,19 +295,24 @@ public:
 					&helper,
 #endif
 					quux::event_base ?
-							(net::QuicAlarmFactory*) &libevent_alarm_factory :
-							(net::QuicAlarmFactory*)
 #if SHADOW
-							alarm_factory,
+							(net::QuicAlarmFactory*) libevent_alarm_factory :
+							(net::QuicAlarmFactory*) alarm_factory,
 #else
-							&alarm_factory,
+							(net::QuicAlarmFactory*) &libevent_alarm_factory :
+							(net::QuicAlarmFactory*) &alarm_factory,
 #endif
 							&writer,
 					false, net::Perspective::IS_CLIENT, supported_versions), session(
 					&connection, config,
 					net::QuicServerId(peer_endpoint.ToStringWithoutPort(),
 							peer_endpoint.port(), net::PRIVACY_MODE_DISABLED),
-					&verify_context, &crypto_client_config, &proof_handler, this), out_messages(
+#if SHADOW
+							verify_context, crypto_client_config, proof_handler,
+#else
+							&verify_context, &crypto_client_config, &proof_handler,
+#endif
+					this), out_messages(
 					writer.out_messages), num(&writer.num) {
 #if 0
 		connection.set_debug_visitor(&debug_visitor);
@@ -750,11 +785,25 @@ static void quux_peer_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 static void quux_init_common(void) {
 
 #if SHADOW
-	helper = new quux::connection::Helper(&quic_clock, &quux_random,
-			&buffer_allocator);
-	alarm_factory = new quux::alarm::Factory(&time_to_alarm_map);
+	quic_clock = new CacheClock();
+	quux_random = new quux::IsaacRandom();
+	buffer_allocator = new net::SimpleBufferAllocator();
+	helper = new quux::connection::Helper(quic_clock, quux_random, buffer_allocator);
+
+	client_writes_ready_set = new quux::WritesReadySet();
+	listen_writes_ready_set = new ListenWritesReadySet();
+
+	time_to_alarm_map = new quux::TimeToAlarmMap();
+	alarm_factory = new quux::alarm::Factory(time_to_alarm_map);
+
+	quux::alarm::LibeventFactory libevent_alarm_factory;
+
+	verify_context = new net::ProofVerifyContext();
+	crypto_client_config = new net::QuicCryptoClientConfig(new quux::proof::Verifier());
+	proof_handler = new quux::proof::Handler();
+
 	crypto_server_config = new net::QuicCryptoServerConfig(
-			source_address_token_secret, &quux_random,
+			source_address_token_secret, quux_random,
 			new quux::proof::Source());
 #endif
 
@@ -773,11 +822,11 @@ static void quux_init_common(void) {
 	}
 
 #if SHADOW
-	crypto_server_config->AddDefaultConfig(&quux_random,
-			&quic_clock, net::QuicCryptoServerConfig::ConfigOptions());
+	crypto_server_config->AddDefaultConfig(quux_random, quic_clock,
+			net::QuicCryptoServerConfig::ConfigOptions());
 #else
-	crypto_server_config.AddDefaultConfig(&quux_random,
-			&quic_clock, net::QuicCryptoServerConfig::ConfigOptions());
+	crypto_server_config.AddDefaultConfig(&quux_random, &quic_clock,
+			net::QuicCryptoServerConfig::ConfigOptions());
 #endif
 
 	char quuxLogName[255];
@@ -1108,8 +1157,13 @@ void quux_loop(void) {
 		int wake_after_millis = -1;
 		bool has_fired = false;
 
+#if SHADOW
+		quux::TimeToAlarmMap::iterator end = time_to_alarm_map->end();
+		for (quux::TimeToAlarmMap::iterator it = time_to_alarm_map->begin();
+#else
 		quux::TimeToAlarmMap::iterator end = time_to_alarm_map.end();
 		for (quux::TimeToAlarmMap::iterator it = time_to_alarm_map.begin();
+#endif
 				it != end;) {
 
 			// XXX: hopefully the time recorded after epoll_wait
@@ -1128,7 +1182,11 @@ void quux_loop(void) {
 			has_fired = true;
 			quux::TimeToAlarmMap::iterator prev = it++;
 			prev->second->Fire();
+#if SHADOW
+			time_to_alarm_map->erase(prev);
+#else
 			time_to_alarm_map.erase(prev);
+#endif
 		}
 
 		// There may have been new alarms added in the loop run above.
@@ -1136,8 +1194,13 @@ void quux_loop(void) {
 		// We should make progress on other stuff first before running
 		// but we need to check if our timeout should be changed to be earlier
 		if (has_fired) {
+#if SHADOW
+			quux::TimeToAlarmMap::iterator it = time_to_alarm_map->begin();
+			if (it != time_to_alarm_map->end()) {
+#else
 			quux::TimeToAlarmMap::iterator it = time_to_alarm_map.begin();
 			if (it != time_to_alarm_map.end()) {
+#endif
 				wake_after_millis = it->first - approx_micros;
 				if (wake_after_millis > 0) {
 					wake_after_millis /= 1000;
@@ -1154,8 +1217,8 @@ void quux_loop(void) {
 
 		// XXX: After this point we don't have any code that could set a timer
 
-		for (auto& peer : client_writes_ready_set) {
 #if SHADOW
+		for (auto& peer : *client_writes_ready_set) {
 			for (int i = 0; i < *peer->num; ++i) {
 				int result = send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
 						peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
@@ -1166,16 +1229,21 @@ void quux_loop(void) {
 						peer->peer_endpoint.ToString().c_str(), peer->sd, result);
 			}
 #else
+		for (auto& peer : client_writes_ready_set) {
 			int sent = sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
 			quux::log("client wrote %d packets to %d (%d successful)\n", *peer->num, peer->sd, sent);
 #endif
 			// XXX: for now we just drop anything that didn't successfully send
 			*peer->num = 0;
 		}
-		client_writes_ready_set.clear();
-
-		for (auto& ctx : listen_writes_ready_set) {
 #if SHADOW
+		client_writes_ready_set->clear();
+#else
+		client_writes_ready_set.clear();
+#endif
+
+#if SHADOW
+		for (auto& ctx : *listen_writes_ready_set) {
 			for (int i = 0; i < *ctx->num; ++i) {
 				int result = sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
 						ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
@@ -1193,13 +1261,18 @@ void quux_loop(void) {
 						their_end.ToString().c_str(), ctx->sd, result);
 			}
 #else
+		for (auto& ctx : listen_writes_ready_set) {
 			int sent = sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
 			quux::log("listener wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
 #endif
 			// XXX: for now we just drop anything that didn't successfully send
 			*ctx->num = 0;
 		}
+#if SHADOW
+		listen_writes_ready_set->clear();
+#else
 		listen_writes_ready_set.clear();
+#endif
 
 #if SHADOW
 		if (wake_after_millis == 0) {
@@ -1234,8 +1307,8 @@ void quux_event_base_loop_before(void) {
  * Write any packets that were generated by the previous event loop run's callbacks
  */
 void quux_event_base_loop_after(void) {
-	for (auto& peer : client_writes_ready_set) {
 #if SHADOW
+	for (auto& peer : *client_writes_ready_set) {
 		for (int i = 0; i < *peer->num; ++i) {
 			int result = send(peer->sd, peer->out_messages[i].msg_hdr.msg_iov->iov_base,
 					peer->out_messages[i].msg_hdr.msg_iov->iov_len, 0);
@@ -1246,16 +1319,21 @@ void quux_event_base_loop_after(void) {
 					peer->peer_endpoint.ToString().c_str(), peer->sd, result);
 		}
 #else
+	for (auto& peer : client_writes_ready_set) {
 		int sent = sendmmsg(peer->sd, peer->out_messages, *peer->num, 0);
 		quux::log("client wrote %d packets to %d (%d successful)\n", *peer->num, peer->sd, sent);
 #endif
 		// XXX: for now we just drop anything that didn't successfully send
 		*peer->num = 0;
 	}
-	client_writes_ready_set.clear();
-
-	for (auto& ctx : listen_writes_ready_set) {
 #if SHADOW
+		listen_writes_ready_set->clear();
+#else
+		listen_writes_ready_set.clear();
+#endif
+
+#if SHADOW
+	for (auto& ctx : *listen_writes_ready_set) {
 		for (int i = 0; i < *ctx->num; ++i) {
 			int result = sendto(ctx->sd, ctx->out_messages[i].msg_hdr.msg_iov->iov_base,
 					ctx->out_messages[i].msg_hdr.msg_iov->iov_len, 0,
@@ -1273,13 +1351,18 @@ void quux_event_base_loop_after(void) {
 					their_end.ToString().c_str(), ctx->sd, result);
 		}
 #else
+	for (auto& ctx : listen_writes_ready_set) {
 		int sent = sendmmsg(ctx->sd, ctx->out_messages, *ctx->num, 0);
 		quux::log("listener wrote %d packets to %d (%d successful)\n", *ctx->num, ctx->sd, sent);
 #endif
 		// XXX: for now we just drop anything that didn't successfully send
 		*ctx->num = 0;
 	}
-	listen_writes_ready_set.clear();
+#if SHADOW
+		listen_writes_ready_set->clear();
+#else
+		listen_writes_ready_set.clear();
+#endif
 }
 
 void quux_shutdown(quux_listener server) {
