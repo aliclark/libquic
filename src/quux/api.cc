@@ -80,7 +80,7 @@ static
 const
 #endif
 net::QuicWallTime NULL_WALL_TIME = net::QuicWallTime::Zero();
-net::QuicWallTime cur_wall_time = NULL_WALL_TIME;
+static net::QuicWallTime cur_wall_time = NULL_WALL_TIME;
 static base::TimeTicks approx_time_ticks = base::TimeTicks::Now();
 
 // A QuicClock that only updates once per event loop run
@@ -198,12 +198,12 @@ static struct epoll_event events[MAX_EVENTS];
 static const int NUM_MESSAGES = 128;
 // XXX: This should be the same size as the socket recv buffer
 // so we can recvmmsg the entire recv buffer in exactly one call
-uint8_t buf[net::kMaxPacketSize * NUM_MESSAGES];
-struct iovec iov[NUM_MESSAGES];
-struct mmsghdr peer_messages[NUM_MESSAGES];
-struct mmsghdr listen_messages[NUM_MESSAGES];
+static uint8_t buf[net::kMaxPacketSize * NUM_MESSAGES];
+static struct iovec iov[NUM_MESSAGES];
+static struct mmsghdr peer_messages[NUM_MESSAGES];
+static struct mmsghdr listen_messages[NUM_MESSAGES];
 // Storage large enough for IPv6, but can be used for IPv4
-struct sockaddr_in6 listen_sockaddrs[NUM_MESSAGES];
+static struct sockaddr_in6 listen_sockaddrs[NUM_MESSAGES];
 // TODO: create a struct of the above structs for better per-packet cache locality?
 
 static int q_errno = QUUX_NO_ERR;
