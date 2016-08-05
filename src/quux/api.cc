@@ -46,7 +46,7 @@
 #include <utility>
 #include <stdarg.h>
 
-#define SHADOW 0
+#define SHADOW 1
 
 /*
  * TODO: comparisons against other impl to find missing things
@@ -829,7 +829,7 @@ static void quux_init_common(void) {
 	time_to_alarm_map = new quux::TimeToAlarmMap();
 	alarm_factory = new quux::alarm::Factory(time_to_alarm_map);
 
-	quux::alarm::LibeventFactory libevent_alarm_factory;
+	libevent_alarm_factory = new quux::alarm::LibeventFactory();
 
 	verify_context = new net::ProofVerifyContext();
 	crypto_client_config = new net::QuicCryptoClientConfig(new quux::proof::Verifier());
