@@ -866,10 +866,9 @@ static void quux_init_common(void) {
 
 	char quuxLogName[255];
 	snprintf(quuxLogName, 255, "/tmp/quux.log.%d", getpid());
-	//log_fileh = fopen(quuxLogName, "w");
-	log_fileh = nullptr;
-
 #if 0
+	log_fileh = fopen(quuxLogName, "w");
+
 	// required for logging
 	base::CommandLine::Init(0, nullptr);
 
@@ -883,6 +882,8 @@ static void quux_init_common(void) {
 	settings.delete_old = logging::DELETE_OLD_LOG_FILE;
 	logging::InitLogging(settings);
 	logging::SetMinLogLevel(-1);
+#else
+	log_fileh = nullptr;
 #endif
 
 }
