@@ -103,7 +103,7 @@ public:
 		int64_t abs_micros = alarm_clock_micros - now_clock_micros;
 		int64_t abs_secs = abs_micros / 1000000;
 		int64_t rem_micros = abs_micros - (abs_secs * 1000000);
-#ifdef SHADOW
+#if SHADOW
 		// XXX: is this needed?
 		if (abs_secs == 0 && rem_micros == 0) {
 			rem_micros = 1;
