@@ -46,7 +46,7 @@
 #include <utility>
 #include <stdarg.h>
 
-#define SHADOW 1
+#define SHADOW 0
 
 /*
  * TODO: comparisons against other impl to find missing things
