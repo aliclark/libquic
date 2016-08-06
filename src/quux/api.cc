@@ -1363,9 +1363,9 @@ void quux_event_base_loop_after(void) {
 		*peer->num = 0;
 	}
 #if SHADOW
-		listen_writes_ready_set->clear();
+	client_writes_ready_set->clear();
 #else
-		listen_writes_ready_set.clear();
+	client_writes_ready_set.clear();
 #endif
 
 #if SHADOW
@@ -1395,9 +1395,9 @@ void quux_event_base_loop_after(void) {
 		*ctx->num = 0;
 	}
 #if SHADOW
-		listen_writes_ready_set->clear();
+	listen_writes_ready_set->clear();
 #else
-		listen_writes_ready_set.clear();
+	listen_writes_ready_set.clear();
 #endif
 }
 
