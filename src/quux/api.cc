@@ -378,7 +378,7 @@ public:
 					config, &connection, visitor, helper, crypto_server_config,
 					compressed_certs_cache, listener_ctx, this) {
 #if QUUX_LOG
-		connection->set_debug_visitor(&debug_visitor);
+		connection.set_debug_visitor(&debug_visitor);
 #endif
 	}
 
