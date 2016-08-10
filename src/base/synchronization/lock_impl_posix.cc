@@ -18,8 +18,10 @@ LockImpl::LockImpl() {
   pthread_mutexattr_t mta;
   int rv = pthread_mutexattr_init(&mta);
   DCHECK_EQ(rv, 0) << ". " << strerror(rv);
+#if !SHADOW
   rv = pthread_mutexattr_settype(&mta, PTHREAD_MUTEX_ERRORCHECK);
   DCHECK_EQ(rv, 0) << ". " << strerror(rv);
+#endif
   rv = pthread_mutex_init(&native_handle_, &mta);
   DCHECK_EQ(rv, 0) << ". " << strerror(rv);
   rv = pthread_mutexattr_destroy(&mta);
