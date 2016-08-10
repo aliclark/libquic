@@ -106,7 +106,7 @@ public:
 #if SHADOW
 		// XXX: is this needed?
 		if (abs_secs == 0 && rem_micros == 0) {
-			rem_micros = 1;
+			rem_micros = 1000;
 		}
 #endif
 		struct timeval deadline_timeval = { abs_secs, rem_micros };
