@@ -336,7 +336,7 @@ public:
 #endif
 					this), out_messages(
 					writer.out_messages), num(&writer.num) {
-#if 0
+#if QUUX_LOG
 		connection.set_debug_visitor(&debug_visitor);
 #endif
 	}
@@ -377,7 +377,7 @@ public:
 					false, net::Perspective::IS_SERVER, supported_versions), session(
 					config, &connection, visitor, helper, crypto_server_config,
 					compressed_certs_cache, listener_ctx, this) {
-#if 0
+#if QUUX_LOG
 		connection->set_debug_visitor(&debug_visitor);
 #endif
 	}
@@ -864,7 +864,7 @@ static void quux_init_common(void) {
 
 	char quuxLogName[255];
 	snprintf(quuxLogName, 255, "/tmp/quux.log.%d", getpid());
-#if 0
+#if QUUX_LOG
 	log_fileh = fopen(quuxLogName, "w");
 
 	// required for logging
