@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <net/base/base_arena.h>
 #include "net/spdy/spdy_header_block.h"
 
 #include <algorithm>
@@ -12,7 +13,6 @@
 #include "base/logging.h"
 #include "base/macros.h"
 #include "base/values.h"
-#include "net/base/arena.h"
 #include "net/http/http_log_util.h"
 
 using base::StringPiece;

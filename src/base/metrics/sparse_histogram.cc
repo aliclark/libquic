@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "base/metrics/sparse_histogram.h"
 
 #include <utility>
@@ -13,7 +14,6 @@
 #include "base/metrics/sample_map.h"
 #include "base/metrics/statistics_recorder.h"
 #include "base/pickle.h"
-#include "base/strings/stringprintf.h"
 #include "base/synchronization/lock.h"
 
 namespace base {

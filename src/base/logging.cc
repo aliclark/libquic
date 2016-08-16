@@ -61,7 +61,7 @@ typedef pthread_mutex_t* MutexHandle;
 #include "base/posix/eintr_wrapper.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
+#include <base/strings/base_stringprintf.h>
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock_impl.h"

@@ -153,7 +153,7 @@ set(
 	src/net/quic/quic_stream_sequencer_buffer.cc
 	src/net/quic/quic_server_session_base.cc
 
-	src/net/base/int128.cc
+	src/net/base/base_int128.cc
 	src/net/base/escape.cc
 	src/net/base/net_errors.cc
 	src/net/base/ip_address.cc
@@ -163,7 +163,7 @@ set(
 	src/net/base/port_util.cc
 	src/net/base/url_util2.cc
 	src/net/base/parse_number.cc
-	src/net/base/arena.cc
+	src/net/base/base_arena.cc
 
 	src/net/spdy/spdy_frame_reader.cc
 	src/net/spdy/spdy_frame_builder.cc
@@ -260,7 +260,7 @@ set(
 	src/base/strings/string_util.cc
 	src/base/strings/string_number_conversions.cc
 	src/base/strings/string_util_constants.cc
-	src/base/strings/stringprintf.cc
+	src/base/strings/base_stringprintf.cc
 	src/base/strings/string_split.cc
 	src/base/strings/string16.cc
 	src/base/strings/utf_string_conversion_utils.cc

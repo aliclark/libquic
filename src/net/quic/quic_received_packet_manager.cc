@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "net/quic/quic_received_packet_manager.h"
 
 #include <limits>
@@ -9,7 +10,6 @@
 
 #include "base/logging.h"
 #include "base/stl_util.h"
-#include "base/strings/stringprintf.h"
 #include "net/base/linked_hash_map.h"
 #include "net/quic/crypto/crypto_protocol.h"
 #include "net/quic/quic_bug_tracker.h"

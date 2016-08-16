@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "base/metrics/histogram_base.h"
 
 #include <limits.h>
@@ -17,7 +18,6 @@
 #include "base/metrics/statistics_recorder.h"
 #include "base/pickle.h"
 #include "base/process/process_handle.h"
-#include "base/strings/stringprintf.h"
 #include "base/values.h"
 
 namespace base {

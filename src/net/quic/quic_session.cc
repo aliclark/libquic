@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "net/quic/quic_session.h"
 
 #include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
 #include "net/quic/crypto/proof_verifier.h"
 #include "net/quic/quic_bug_tracker.h"
 #include "net/quic/quic_connection.h"

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "net/quic/quic_headers_stream.h"
 
 #include <utility>
@@ -9,7 +10,6 @@
 #include "base/macros.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
 #include "net/quic/quic_bug_tracker.h"
 #include "net/quic/quic_flags.h"
 #include "net/quic/quic_header_list.h"

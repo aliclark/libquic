@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "base/mac/mach_logging.h"
 
 #include <iomanip>
 #include <string>
 
-#include "base/strings/stringprintf.h"
 #include "build/build_config.h"
 
 #if !defined(OS_IOS)

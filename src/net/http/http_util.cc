@@ -5,6 +5,7 @@
 // The rules for parsing content-types were borrowed from Firefox:
 // http://lxr.mozilla.org/mozilla/source/netwerk/base/src/nsURLHelper.cpp#834
 
+#include <base/strings/base_stringprintf.h>
 #include <net/base/url_util2.h>
 #include "net/http/http_util.h"
 
@@ -15,7 +16,6 @@
 #include "base/strings/string_piece.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 
 namespace net {

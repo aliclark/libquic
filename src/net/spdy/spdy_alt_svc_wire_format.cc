@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "net/spdy/spdy_alt_svc_wire_format.h"
 
 #include <algorithm>
@@ -9,7 +10,6 @@
 #include <string>
 
 #include "base/logging.h"
-#include "base/strings/stringprintf.h"
 
 namespace net {
 

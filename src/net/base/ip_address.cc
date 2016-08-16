@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "net/base/ip_address.h"
 
 #include <limits.h>
 
 #include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
-#include "base/strings/stringprintf.h"
 #include "net/base/parse_number.h"
 #include "url/gurl.h"
 #include "url/url_canon_ip.h"

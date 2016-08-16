@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "net/quic/quic_utils.h"
 
 #include <ctype.h>
@@ -14,7 +15,6 @@
 #include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
-#include "base/strings/stringprintf.h"
 #include "net/base/ip_address.h"
 #include "net/quic/quic_flags.h"
 #include "net/quic/quic_write_blocked_list.h"

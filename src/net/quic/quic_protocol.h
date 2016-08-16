@@ -5,6 +5,7 @@
 #ifndef NET_QUIC_QUIC_PROTOCOL_H_
 #define NET_QUIC_QUIC_PROTOCOL_H_
 
+#include <net/base/base_int128.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -22,7 +23,6 @@
 #include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/strings/string_piece.h"
-#include "net/base/int128.h"
 #include "net/base/iovec.h"
 #include "net/base/ip_endpoint.h"
 #include "net/base/net_export.h"

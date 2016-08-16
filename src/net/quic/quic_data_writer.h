@@ -5,6 +5,7 @@
 #ifndef NET_QUIC_QUIC_DATA_WRITER_H_
 #define NET_QUIC_QUIC_DATA_WRITER_H_
 
+#include <net/base/base_int128.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -14,7 +15,6 @@
 #include "base/logging.h"
 #include "base/macros.h"
 #include "base/strings/string_piece.h"
-#include "net/base/int128.h"
 #include "net/base/net_export.h"
 #include "net/quic/quic_protocol.h"
 

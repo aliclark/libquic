@@ -13,7 +13,7 @@
 
 #include "base/logging.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
+#include <base/strings/base_stringprintf.h>
 #include "net/base/escape.h"
 #include "net/base/ip_address.h"
 #if 0

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "net/spdy/spdy_framer_decoder_adapter.h"
 
 #include <memory>
@@ -9,7 +10,6 @@
 
 #include "base/format_macros.h"
 #include "base/logging.h"
-#include "base/strings/stringprintf.h"
 
 #if defined(COMPILER_GCC)
 #define PRETTY_THIS base::StringPrintf("%s@%p ", __PRETTY_FUNCTION__, this)

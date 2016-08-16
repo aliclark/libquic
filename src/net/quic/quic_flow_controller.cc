@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <base/strings/base_stringprintf.h>
 #include "net/quic/quic_flow_controller.h"
 
-#include "base/strings/stringprintf.h"
 #include "net/quic/quic_bug_tracker.h"
 #include "net/quic/quic_connection.h"
 #include "net/quic/quic_flags.h"

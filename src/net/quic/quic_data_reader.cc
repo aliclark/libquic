@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <net/base/base_int128.h>
 #include "net/quic/quic_data_reader.h"
 
-#include "net/base/int128.h"
 #include "net/quic/quic_protocol.h"
 
 using base::StringPiece;
