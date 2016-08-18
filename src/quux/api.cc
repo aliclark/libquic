@@ -1130,7 +1130,7 @@ size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 void quux_write_close(quux_stream stream) {
 
 	// FIXME: this will not wait for all bytes to be acked !!!!!!
-
+	stream->quux_writeable = null_cb;
 	stream->CloseWriteSide();
 }
 
@@ -1158,6 +1158,7 @@ uint8_t* quux_read_ask(quux_stream stream, size_t count) {
 }
 
 void quux_read_close(quux_stream stream) {
+	stream->quux_readable = null_cb;
 	stream->StopReading();
 }
 
