@@ -886,6 +886,10 @@ static void quux_init_common(void) {
 
 }
 
+static void null_cb(quux_stream) {
+	// ignore
+}
+
 } // namespace
 
 int quux_init_loop(void) {
@@ -1098,9 +1102,15 @@ void quux_set_accept_cb(quux_peer peer, quux_cb quux_accept) {
 	peer->accept_cb = quux_accept;
 }
 void quux_set_readable_cb(quux_stream stream, quux_cb quux_readable) {
+	if (!quux_readable) {
+		quux_readable = null_cb;
+	}
 	stream->quux_readable = quux_readable;
 }
 void quux_set_writeable_cb(quux_stream stream, quux_cb quux_writeable) {
+	if (!quux_writeable) {
+		quux_writeable = null_cb;
+	}
 	stream->quux_writeable = quux_writeable;
 }
 
