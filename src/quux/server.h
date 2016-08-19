@@ -221,11 +221,11 @@ public:
 	}
 
 	~Stream() {
-		// this might be safe, but leaving it out for now
-#if 0
+		// Hack. TODO: stop using QuicSpdyStream
+		set_fin_sent(true);
+
 		StopReading();
 		CloseWriteSide();
-#endif
 	}
 
 	void OnDataAvailable() override {

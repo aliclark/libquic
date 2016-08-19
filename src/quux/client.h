@@ -190,12 +190,9 @@ public:
 	}
 
 	~Stream() {
-		// this might be safe, but leaving it out for now
-#if 0
 		StopReading();
 		CloseWriteSide();
 		quux::client::session::unregister_stream(sessionptr, id());
-#endif
 	}
 
 	void OnDataAvailable() override {
