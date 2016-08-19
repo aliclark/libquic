@@ -221,9 +221,6 @@ public:
 	}
 
 	~Stream() {
-		// Hack. TODO: stop using QuicSpdyStream
-		set_fin_sent(true);
-
 		StopReading();
 		CloseWriteSide();
 	}
@@ -277,10 +274,14 @@ public:
 	}
 
 	void StopReading() override {
-		QuicSpdyStream::StopReading();
+		// NB. QuicSpdyStream: adds a requirement on 'fin' already being sent,
+		// which we don't want
+		ReliableQuicStream::StopReading();
 	}
 	void CloseWriteSide() override {
-		QuicSpdyStream::CloseWriteSide();
+		// NB. QuicSpdyStream: adds a requirement on 'fin' already being sent,
+		// which we don't want
+		ReliableQuicStream::CloseWriteSide();
 	}
 
 	quux_stream const ctx;
