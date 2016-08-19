@@ -20,6 +20,11 @@ quux_cb accept_cb(quux_peer ctx);
 quux_cb readable_cb(quux_stream ctx);
 quux_cb writeable_cb(quux_stream ctx);
 
+void set_stream_closed(quux_stream ctx);
+
+bool* read_wanted_ref(quux_stream ctx);
+bool* write_wanted_ref(quux_stream ctx);
+
 extern struct event_base *event_base;
 
 namespace server {

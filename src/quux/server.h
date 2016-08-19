@@ -207,7 +207,9 @@ class Stream: public net::QuicSpdyStream {
 public:
 	Stream(net::QuicStreamId id, quux::server::Session* spdy_session,
 			quux_stream ctx) :
-			QuicSpdyStream(id, spdy_session), ctx(ctx), read_wanted(false), write_wanted(false) {
+			QuicSpdyStream(id, spdy_session), ctx(ctx), read_wanted(
+					quux::read_wanted_ref(ctx)), write_wanted(
+					quux::write_wanted_ref(ctx)) {
 
 		// nb. QuicSpdyStream() already registered stream priority for us
 		quux::server::session::activate_stream(spdy_session, this);
@@ -219,24 +221,31 @@ public:
 	}
 
 	~Stream() {
+		// this might be safe, but leaving it out for now
+#if 0
 		StopReading();
 		CloseWriteSide();
+#endif
 	}
 
 	void OnDataAvailable() override {
-		if (!read_wanted) {
+		if (!*read_wanted) {
 			return;
 		}
-		read_wanted = false;
+		*read_wanted = false;
 		quux::readable_cb(ctx)(ctx);
 	}
 
 	void OnCanWrite() override {
-		if (!write_wanted) {
+		if (!*write_wanted) {
 			return;
 		}
-		write_wanted = false;
+		*write_wanted = false;
 		quux::writeable_cb(ctx)(ctx);
+	}
+
+	void OnClose() override {
+		quux::set_stream_closed(ctx);
 	}
 
 	/// exposing protected methods
@@ -276,8 +285,8 @@ public:
 
 	quux_stream const ctx;
 
-	bool read_wanted;
-	bool write_wanted;
+	bool* const read_wanted;
+	bool* const write_wanted;
 };
 
 } /* namespace server */

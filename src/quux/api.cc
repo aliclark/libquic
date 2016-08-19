@@ -304,7 +304,7 @@ public:
 							connection(net::QuicConnectionId(quux_random->RandUint64() & ~1),
 #else
 							&client_writes_ready_set),
-							connection(net::QuicConnectionId(quux_random.RandUint64() & ~1),
+							connection(new net::QuicConnection(net::QuicConnectionId(quux_random.RandUint64() & ~1),
 #endif
 					peer_endpoint,
 #if SHADOW
@@ -321,7 +321,7 @@ public:
 							(net::QuicAlarmFactory*) &alarm_factory,
 #endif
 							&writer,
-					false, net::Perspective::IS_CLIENT, supported_versions), session(&connection,
+					false, net::Perspective::IS_CLIENT, supported_versions)), session(new quux::client::Session(connection,
 #if SHADOW
 							*config,
 #else
@@ -334,10 +334,10 @@ public:
 #else
 							&verify_context, &crypto_client_config, &proof_handler,
 #endif
-					this), out_messages(
+					this)), out_messages(
 					writer.out_messages), num(&writer.num) {
 #if QUUX_LOG
-		connection.set_debug_visitor(&debug_visitor);
+		connection->set_debug_visitor(&debug_visitor);
 #endif
 	}
 
@@ -346,8 +346,8 @@ public:
 	quux::client::packet::Writer writer;
 
 	quux::connection::Logger debug_visitor;
-	net::QuicConnection connection;
-	quux::client::Session session;
+	net::QuicConnection* const connection;
+	quux::client::Session* const session;
 
 	// handy references
 	struct mmsghdr* const out_messages;
@@ -372,19 +372,20 @@ public:
 			quux_listener listener_ctx) :
 
 			quux_peer_s(Type::SERVER, sd, self_endpoint, peer_endpoint), connection(
-					connection_id, peer_endpoint, connection_helper,
-					alarm_factory, writer,
-					false, net::Perspective::IS_SERVER, supported_versions), session(
-					config, &connection, visitor, helper, crypto_server_config,
-					compressed_certs_cache, listener_ctx, this) {
+					new net::QuicConnection(connection_id, peer_endpoint,
+							connection_helper, alarm_factory, writer,
+							false, net::Perspective::IS_SERVER,
+							supported_versions)), session(new quux::server::Session(config, connection,
+					visitor, helper, crypto_server_config,
+					compressed_certs_cache, listener_ctx, this)) {
 #if QUUX_LOG
-		connection.set_debug_visitor(&debug_visitor);
+		connection->set_debug_visitor(&debug_visitor);
 #endif
 	}
 
 	quux::connection::Logger debug_visitor;
-	net::QuicConnection connection;
-	quux::server::Session session;
+	net::QuicConnection* const connection;
+	quux::server::Session* const session;
 };
 
 class quux_stream_s {
@@ -392,11 +393,9 @@ public:
 	enum Type {
 		SERVER, CLIENT
 	};
-	explicit quux_stream_s(Type type, quux_peer peer,
-			bool* read_wanted, bool* write_wanted) :
+	explicit quux_stream_s(Type type, quux_peer peer) :
 			type(type), peer(peer), quux_writeable(nullptr), quux_readable(
-					nullptr), read_wanted(read_wanted), write_wanted(write_wanted), arg(
-					nullptr) {
+					nullptr), read_wanted(false), write_wanted(false), closed(false), arg(nullptr) {
 	}
 
 	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
@@ -417,8 +416,10 @@ public:
 	quux_cb quux_writeable;
 	quux_cb quux_readable;
 
-	bool* const read_wanted;
-	bool* const write_wanted;
+	bool read_wanted;
+	bool write_wanted;
+
+	bool closed;
 
 	// handy slot for application code to associate an arbitrary structure
 	void* arg;
@@ -427,110 +428,170 @@ public:
 class quux_stream_client_s: public quux_stream_s {
 public:
 	explicit quux_stream_client_s(quux_peer_client_s* peer) :
-			quux_stream_s(Type::CLIENT, peer, &stream.read_wanted, &stream.write_wanted),
-					stream(peer->session.GetNextOutgoingStreamId(),
-					&peer->session, this) {
+			quux_stream_s(Type::CLIENT, peer),
+					stream(new quux::client::Stream(peer->session->GetNextOutgoingStreamId(),
+					peer->session, this)) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
-		return stream.WritevData(iov, 1, false, nullptr);
+		if (closed) {
+			return net::QuicConsumedData(0, 0);
+		}
+		return stream->WritevData(iov, 1, false, nullptr);
 	}
 	size_t peek(uint8_t* dst, size_t count) override {
-		return stream.peek(dst, count);
+		if (closed) {
+			return 0;
+		}
+		return stream->peek(dst, count);
 	}
 	int Readv(const struct iovec* iov) override {
-		return stream.Readv(iov, 1);
+		if (closed) {
+			return 0;
+		}
+		return stream->Readv(iov, 1);
 	}
 	void StopReading() override {
-		stream.StopReading();
+		if (closed) {
+			return;
+		}
+		stream->StopReading();
 	}
 	void CloseWriteSide() override {
-		stream.CloseWriteSide();
+		if (closed) {
+			return;
+		}
+		stream->CloseWriteSide();
 	}
 
-	quux::client::Stream stream;
+	quux::client::Stream* const stream;
 };
 
 class quux_stream_server_s: public quux_stream_s {
 public:
 	explicit quux_stream_server_s(quux_peer_server_s* peer) :
-			quux_stream_s(Type::CLIENT, peer,
-					&stream.read_wanted, &stream.write_wanted), stream(
-					peer->session.GetNextOutgoingStreamId(), &peer->session,
-					this) {
+			quux_stream_s(Type::CLIENT, peer), stream(
+					new quux::server::Stream(
+							peer->session->GetNextOutgoingStreamId(),
+							peer->session, this)) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
-		return stream.WritevData(iov, 1, false, nullptr);
+		if (closed) {
+			return net::QuicConsumedData(0, 0);
+		}
+		return stream->WritevData(iov, 1, false, nullptr);
 	}
 	size_t peek(uint8_t* dst, size_t count) override {
-		return stream.peek(dst, count);
+		if (closed) {
+			return 0;
+		}
+		return stream->peek(dst, count);
 	}
 	int Readv(const struct iovec* iov) override {
-		return stream.Readv(iov, 1);
+		if (closed) {
+			return 0;
+		}
+		return stream->Readv(iov, 1);
 	}
 	void StopReading() override {
-		stream.StopReading();
+		if (closed) {
+			return;
+		}
+		stream->StopReading();
 	}
 	void CloseWriteSide() override {
-		stream.CloseWriteSide();
+		if (closed) {
+			return;
+		}
+		stream->CloseWriteSide();
 	}
 
-	quux::server::Stream stream;
+	quux::server::Stream* const stream;
 };
 
 class quux_stream_client_incoming_s: public quux_stream_s {
 public:
 	explicit quux_stream_client_incoming_s(net::QuicStreamId id,
 			quux::client::Session* session) :
-			quux_stream_s(Type::CLIENT, session->peer_ctx,
-					&stream.read_wanted, &stream.write_wanted), stream(id, session, this) {
+			quux_stream_s(Type::CLIENT, session->peer_ctx), stream(
+					new quux::client::Stream(id, session, this)) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
-		return stream.WritevData(iov, 1, false, nullptr);
+		if (closed) {
+			return net::QuicConsumedData(0, 0);
+		}
+		return stream->WritevData(iov, 1, false, nullptr);
 	}
 	size_t peek(uint8_t* dst, size_t count) override {
-		return stream.peek(dst, count);
+		if (closed) {
+			return 0;
+		}
+		return stream->peek(dst, count);
 	}
 	int Readv(const struct iovec* iov) override {
-		return stream.Readv(iov, 1);
+		if (closed) {
+			return 0;
+		}
+		return stream->Readv(iov, 1);
 	}
 	void StopReading() override {
-		stream.StopReading();
+		if (closed) {
+			return;
+		}
+		stream->StopReading();
 	}
 	void CloseWriteSide() override {
-		stream.CloseWriteSide();
+		if (closed) {
+			return;
+		}
+		stream->CloseWriteSide();
 	}
 
-	quux::client::Stream stream;
+	quux::client::Stream* const stream;
 };
 
 class quux_stream_server_incoming_s: public quux_stream_s {
 public:
 	explicit quux_stream_server_incoming_s(net::QuicStreamId id,
 			quux::server::Session* session) :
-			quux_stream_s(Type::SERVER, session->peer_ctx,
-					&stream.read_wanted, &stream.write_wanted), stream(id, session, this) {
+			quux_stream_s(Type::SERVER, session->peer_ctx), stream(
+					new quux::server::Stream(id, session, this)) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
-		return stream.WritevData(iov, 1, false, nullptr);
+		if (closed) {
+			return net::QuicConsumedData(0, 0);
+		}
+		return stream->WritevData(iov, 1, false, nullptr);
 	}
 	size_t peek(uint8_t* dst, size_t count) override {
-		return stream.peek(dst, count);
+		if (closed) {
+			return 0;
+		}
+		return stream->peek(dst, count);
 	}
 	int Readv(const struct iovec* iov) override {
-		return stream.Readv(iov, 1);
+		if (closed) {
+			return 0;
+		}
+		return stream->Readv(iov, 1);
 	}
 	void StopReading() override {
-		stream.StopReading();
+		if (closed) {
+			return;
+		}
+		stream->StopReading();
 	}
 	void CloseWriteSide() override {
-		stream.CloseWriteSide();
+		if (closed) {
+			return;
+		}
+		stream->CloseWriteSide();
 	}
 
-	quux::server::Stream stream;
+	quux::server::Stream* const stream;
 };
 
 namespace quux {
@@ -561,6 +622,17 @@ quux_cb readable_cb(quux_stream ctx) {
 }
 quux_cb writeable_cb(quux_stream ctx) {
 	return ctx->quux_writeable;
+}
+
+void set_stream_closed(quux_stream ctx) {
+	ctx->closed = true;
+}
+
+bool* read_wanted_ref(quux_stream ctx) {
+	return &ctx->read_wanted;
+}
+bool* write_wanted_ref(quux_stream ctx) {
+	return &ctx->write_wanted;
 }
 
 // This will be set if we're using libevent
@@ -600,7 +672,7 @@ net::QuicServerSessionBase* get(quux_peer ctx) {
 		return nullptr;
 	}
 	quux_peer_server_s* peer = (quux_peer_server_s*) ctx;
-	return &peer->session;
+	return peer->session;
 }
 
 void activate_stream(quux::server::Session* session, quux::server::Stream* stream) {
@@ -621,7 +693,7 @@ net::QuicSpdyStream* get_incoming_spdy(quux_stream ctx) {
 		return nullptr;
 	}
 	quux_stream_server_incoming_s* server = (quux_stream_server_incoming_s*) ctx;
-	return &server->stream;
+	return server->stream;
 }
 
 } // namespace stream
@@ -659,7 +731,7 @@ net::ReliableQuicStream* get_incoming(quux_stream ctx) {
 		return nullptr;
 	}
 	quux_stream_client_incoming_s* client = (quux_stream_client_incoming_s*) ctx;
-	return &client->stream;
+	return client->stream;
 }
 
 } // namespace stream
@@ -745,7 +817,7 @@ static void quux_listen_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 static void quux_peer_cb(const net::QuicTime& approx_time,
 		quux_peer_client_s* ctx) {
 
-	net::QuicConnection& connection = ctx->connection;
+	net::QuicConnection& connection = *ctx->connection;
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	const net::IPEndPoint& peer_endpoint = ctx->peer_endpoint;
 
@@ -778,7 +850,7 @@ static void quux_peer_libevent_cb(int /*socket*/, short /*what*/, void* arg) {
 		approx_time_ticks = base::TimeTicks::Now();
 	}
 	net::QuicTime approx_time(approx_time_ticks);
-	net::QuicConnection& connection = ctx->connection;
+	net::QuicConnection& connection = *ctx->connection;
 	const net::IPEndPoint& self_endpoint = ctx->self_endpoint;
 	const net::IPEndPoint& peer_endpoint = ctx->peer_endpoint;
 
@@ -1122,7 +1194,7 @@ size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 	struct iovec iov = { (void*) buf, count };
 	net::QuicConsumedData consumed(stream->WritevData(&iov));
 	if (consumed.bytes_consumed == 0) {
-		*stream->write_wanted = true;
+		stream->write_wanted = true;
 	}
 	return consumed.bytes_consumed;
 }
@@ -1148,7 +1220,7 @@ size_t quux_read(quux_stream stream, uint8_t* buf, size_t count) {
 	int data_read = stream->Readv(&iov);
 	if (data_read == 0) {
 		// re-register an interest in reading
-		*stream->read_wanted = true;
+		stream->read_wanted = true;
 	}
 	return data_read;
 }

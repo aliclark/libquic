@@ -181,31 +181,36 @@ public:
 	// ReliableQuic(id,session) needs to know Session is a QuicSession
 	Stream(net::QuicStreamId id, quux::client::Session* session,
 			quux_stream ctx) :
-			ReliableQuicStream(id, session), ctx(ctx), read_wanted(false), write_wanted(false), sessionptr(session) {
+			ReliableQuicStream(id, session), ctx(ctx), read_wanted(
+					quux::read_wanted_ref(ctx)), write_wanted(
+					quux::write_wanted_ref(ctx)), sessionptr(session) {
 
 		quux::client::session::register_stream(session, id);
 		quux::client::session::activate_stream(session, this);
 	}
 
 	~Stream() {
+		// this might be safe, but leaving it out for now
+#if 0
 		StopReading();
 		CloseWriteSide();
 		quux::client::session::unregister_stream(sessionptr, id());
+#endif
 	}
 
 	void OnDataAvailable() override {
-		if (!read_wanted) {
+		if (!*read_wanted) {
 			return;
 		}
-		read_wanted = false;
+		*read_wanted = false;
 		quux::readable_cb(ctx)(ctx);
 	}
 
 	void OnCanWrite() override {
-		if (!write_wanted) {
+		if (!*write_wanted) {
 			return;
 		}
-		write_wanted = false;
+		*write_wanted = false;
 		quux::writeable_cb(ctx)(ctx);
 	}
 
@@ -254,8 +259,8 @@ public:
 
 	quux_stream const ctx;
 
-	bool read_wanted;
-	bool write_wanted;
+	bool* const read_wanted;
+	bool* const write_wanted;
 
 	quux::client::Session* const sessionptr;
 };
