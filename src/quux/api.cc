@@ -626,6 +626,8 @@ quux_cb writeable_cb(quux_stream ctx) {
 }
 
 void set_stream_closed(quux_stream ctx) {
+	ctx->read_wanted = false;
+	ctx->write_wanted = false;
 	ctx->closed = true;
 }
 
