@@ -301,7 +301,7 @@ public:
 					(cbfunc) quux_peer_cb, (void*) this }), writer(sd, this,
 #if SHADOW
 							client_writes_ready_set),
-							connection(net::QuicConnectionId(quux_random->RandUint64() & ~1),
+							connection(new net::QuicConnection(net::QuicConnectionId(quux_random->RandUint64() & ~1),
 #else
 							&client_writes_ready_set),
 							connection(new net::QuicConnection(net::QuicConnectionId(quux_random.RandUint64() & ~1),
@@ -321,7 +321,8 @@ public:
 							(net::QuicAlarmFactory*) &alarm_factory,
 #endif
 							&writer,
-					false, net::Perspective::IS_CLIENT, supported_versions)), session(new quux::client::Session(connection,
+					false, net::Perspective::IS_CLIENT, supported_versions)),
+					session(new quux::client::Session(connection,
 #if SHADOW
 							*config,
 #else
