@@ -214,6 +214,10 @@ public:
 		quux::writeable_cb(ctx)(ctx);
 	}
 
+	void OnClose() override {
+		quux::set_stream_closed(ctx);
+	}
+
 	/// exposing protected methods
 
 	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
