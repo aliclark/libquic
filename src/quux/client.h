@@ -212,6 +212,7 @@ public:
 	}
 
 	void OnClose() override {
+		ReliableQuicStream::OnClose();
 		quux::set_stream_closed(ctx);
 	}
 
