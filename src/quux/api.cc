@@ -390,7 +390,9 @@ public:
 	}
 
 	quux::connection::Logger debug_visitor;
+	// connection owned by session
 	net::QuicConnection* const connection;
+	// session owned by dispatcher
 	quux::server::Session* const session;
 };
 
@@ -405,10 +407,10 @@ public:
 					false), closed(false), arg(nullptr) {
 	}
 
-	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
-
 	virtual size_t peek(uint8_t* dst, size_t count) = 0;
 	virtual int Readv(const struct iovec* iov) = 0;
+
+	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
 
 	virtual void StopReading() = 0;
 	virtual void CloseWriteSide() = 0;
@@ -472,6 +474,7 @@ public:
 		stream->CloseWriteSide();
 	}
 
+	// stream owned by session
 	quux::client::Stream* const stream;
 };
 
@@ -515,6 +518,7 @@ public:
 		stream->CloseWriteSide();
 	}
 
+	// stream owned by session
 	quux::server::Stream* const stream;
 };
 
@@ -557,6 +561,7 @@ public:
 		stream->CloseWriteSide();
 	}
 
+	// stream owned by session
 	quux::client::Stream* const stream;
 };
 
@@ -599,6 +604,7 @@ public:
 		stream->CloseWriteSide();
 	}
 
+	// stream owned by session
 	quux::server::Stream* const stream;
 };
 
