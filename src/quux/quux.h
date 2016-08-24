@@ -168,19 +168,27 @@ size_t quux_read(quux_stream stream, uint8_t* buf, size_t count);
  * If 'count' octets are contiguously readable from the stream,
  * return a pointer to those octets.
  *
- * The pointer must be used before any further QUIC operations,
- * or it may become invalid.
+ * The pointer *must* be used before any further QUIC operations
+ * and before the function returns, or it can become invalid.
  *
  * This function should only be used where the performance
  * overhead of memcpy might matter.
  *
  * NULL indicates that the requested amount is not available at the moment.
- * This function will *NOT* result in callbacks being reregistered.
+ * This function will not result in callbacks being reregistered in that case.
  *
- * You should call quux_read after receiving NULL, as there is no guarantee
- * that the underlying process will ever have the data in a contiguous buffer.
+ * quux_peek or quux_read should be used instead if NULL is returned,
+ * since the data may be available, albeit not already in a contiguous buffer.
+ *
+ * Otherwise, call quux_read_consume afterwards to remove the data from input.
  */
-uint8_t* quux_read_ask(quux_stream stream, size_t count);
+uint8_t* quux_peek_reference(quux_stream stream, size_t count);
+
+/**
+ * Consume up to 'count' bytes from the stream input,
+ * or the entirety if there was less than that amount available to read.
+ */
+void quux_read_consume(quux_stream stream, size_t count);
 
 /**
  * Indicate we don't want to read any additional data from the stream.

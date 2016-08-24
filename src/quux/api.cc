@@ -1266,8 +1266,12 @@ size_t quux_read(quux_stream stream, uint8_t* buf, size_t count) {
 	return data_read;
 }
 
-uint8_t* quux_read_ask(quux_stream stream, size_t count) {
+uint8_t* quux_peek_reference(quux_stream stream, size_t count) {
 	return nullptr;
+}
+
+void quux_read_consume(quux_stream stream, size_t count) {
+	assert(0);
 }
 
 void quux_read_close(quux_stream stream) {
