@@ -212,6 +212,10 @@ static void quux_listen_cb(const net::QuicTime& approx_time, quux_listener ctx);
 static void quux_peer_cb(const net::QuicTime& approx_time,
 		quux_peer_client_s* ctx);
 
+static void null_cb(quux_stream) {
+	// ignore
+}
+
 } // namespace
 
 class quux_listener_s {
@@ -395,8 +399,9 @@ public:
 		SERVER, CLIENT
 	};
 	explicit quux_stream_s(Type type, quux_peer peer) :
-			type(type), peer(peer), quux_writeable(nullptr), quux_readable(
-					nullptr), read_wanted(false), write_wanted(false), closed(false), arg(nullptr) {
+			type(type), peer(peer), quux_readable(null_cb), quux_writeable(
+					null_cb), quux_closed(null_cb), read_wanted(false), write_wanted(
+					false), closed(false), arg(nullptr) {
 	}
 
 	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
@@ -414,12 +419,13 @@ public:
 
 	quux_peer const peer;
 
-	quux_cb quux_writeable;
 	quux_cb quux_readable;
+	quux_cb quux_writeable;
+
+	quux_cb quux_closed;
 
 	bool read_wanted;
 	bool write_wanted;
-
 	bool closed;
 
 	// handy slot for application code to associate an arbitrary structure
@@ -959,10 +965,6 @@ static void quux_init_common(void) {
 	log_fileh = nullptr;
 #endif
 
-}
-
-static void null_cb(quux_stream) {
-	// ignore
 }
 
 } // namespace
