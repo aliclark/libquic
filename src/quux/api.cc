@@ -447,7 +447,7 @@ public:
 		if (closed) {
 			return net::QuicConsumedData(0, 0);
 		}
-		return stream->WritevData(iov, 1, false, nullptr);
+		return stream->Writev(iov);
 	}
 	size_t peek(uint8_t* dst, size_t count) override {
 		if (closed) {
@@ -459,7 +459,7 @@ public:
 		if (closed) {
 			return 0;
 		}
-		return stream->Readv(iov, 1);
+		return stream->Readv(iov);
 	}
 	void StopReading() override {
 		if (closed) {
@@ -491,7 +491,7 @@ public:
 		if (closed) {
 			return net::QuicConsumedData(0, 0);
 		}
-		return stream->WritevData(iov, 1, false, nullptr);
+		return stream->Writev(iov);
 	}
 	size_t peek(uint8_t* dst, size_t count) override {
 		if (closed) {
@@ -534,7 +534,7 @@ public:
 		if (closed) {
 			return net::QuicConsumedData(0, 0);
 		}
-		return stream->WritevData(iov, 1, false, nullptr);
+		return stream->Writev(iov);
 	}
 	size_t peek(uint8_t* dst, size_t count) override {
 		if (closed) {
@@ -546,7 +546,7 @@ public:
 		if (closed) {
 			return 0;
 		}
-		return stream->Readv(iov, 1);
+		return stream->Readv(iov);
 	}
 	void StopReading() override {
 		if (closed) {
@@ -577,7 +577,7 @@ public:
 		if (closed) {
 			return net::QuicConsumedData(0, 0);
 		}
-		return stream->WritevData(iov, 1, false, nullptr);
+		return stream->Writev(iov);
 	}
 	size_t peek(uint8_t* dst, size_t count) override {
 		if (closed) {

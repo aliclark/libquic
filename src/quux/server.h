@@ -267,10 +267,8 @@ public:
 	    return seen;
 	}
 
-	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
-	bool fin, net::QuicAckListenerInterface* ack_listener) {
-
-		return QuicSpdyStream::WritevData(iov, iov_count, fin, ack_listener);
+	net::QuicConsumedData Writev(const struct iovec* iov) {
+		return net::ReliableQuicStream::WritevData(iov, 1, false, nullptr);
 	}
 
 	void StopReading() override {

@@ -217,14 +217,9 @@ public:
 
 	/// exposing protected methods
 
-	net::QuicConsumedData WritevData(const struct iovec* iov, int iov_count,
-	bool fin, net::QuicAckListenerInterface* ack_listener) {
-
-		return net::ReliableQuicStream::WritevData(iov, iov_count, fin,
-				ack_listener);
+	net::QuicConsumedData Writev(const struct iovec* iov) {
+		return net::ReliableQuicStream::WritevData(iov, 1, false, nullptr);
 	}
-
-	// access to protected stuff
 
 	// We really want QuicStreamSequencerBuffer::Readv
 	// but alas it's private and hidden away :(
@@ -246,10 +241,26 @@ public:
 	    return seen;
 	}
 
-	// access to protected stuff
-	int Readv(const struct iovec* iov, size_t iov_len) {
-		return sequencer()->Readv(iov, iov_len);
+	int Readv(const struct iovec* iov) {
+		return sequencer()->Readv(iov, 1);
 	}
+
+	uint8_t* peek_reference(size_t need) {
+		struct iovec iov;
+		int region = sequencer()->GetReadableRegions(&iov, 1);
+		if (!region) {
+			return nullptr;
+		}
+		if (iov.iov_len < need) {
+			return nullptr;
+		}
+		return iov.iov_base;
+	}
+
+	void skip(size_t amount) {
+		// mark "amount" of data as consumed.
+	}
+
 
 	void StopReading() override {
 		ReliableQuicStream::StopReading();
