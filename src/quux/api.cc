@@ -1286,6 +1286,14 @@ int quux_read_stream_status(quux_stream stream) {
 	return 0;
 }
 
+void quux_free_stream(quux_stream stream) {
+	// ensure the stream is closed, so it doesn't start trying to use the memory later
+	quux_read_close(stream);
+	quux_write_close(stream);
+
+	delete stream;
+}
+
 // TODO: we may want to give special consideration to the 'listen' fd,
 // since it is likely to send/recv traffic at a greater rate than connections we initiate ourself
 //

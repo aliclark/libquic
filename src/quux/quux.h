@@ -139,9 +139,9 @@ size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count);
 void quux_write_close(quux_stream stream);
 
 /**
- * 1 if all future writes would do nothing, 0 otherwise.
+ * 1 if the stream is fully closed, 0 otherwise.
  */
-int quux_write_is_closed(quux_stream stream);
+int quux_write_stream_status(quux_stream stream);
 
 /**
  * Read up to 'count' octets from the stream into 'buf'
@@ -196,9 +196,16 @@ void quux_read_consume(quux_stream stream, size_t count);
 void quux_read_close(quux_stream stream);
 
 /**
- * 1 if all future reads would return nothing, 0 otherwise.
+ * 1 if the stream is fully closed, 0 otherwise.
  */
-int quux_read_is_closed(quux_stream stream);
+int quux_read_stream_status(quux_stream stream);
+
+/**
+ * Fully close the stream and free its memory.
+ *
+ * After this point, the handle will point to invalid memory and must not be used.
+ */
+void quux_free_stream(quux_stream stream);
 
 /**
  * Stop accepting connections
