@@ -72,6 +72,8 @@ void quux_reset_errno(void);
  *
  * TODO: error if there is already a server listening on ip:port
  *
+ * TODO: quux_set_connected_cb instead
+ *
  * quux_connected cb is called with the peer when a fresh client connects.
  */
 quux_listener quux_listen(const struct sockaddr* addr, quux_connected cb);
