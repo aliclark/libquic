@@ -639,9 +639,15 @@ quux_cb writeable_cb(quux_stream ctx) {
 }
 
 void set_stream_closed(quux_stream ctx) {
+	if (ctx->closed) {
+		return;
+	}
+
 	ctx->read_wanted = false;
 	ctx->write_wanted = false;
 	ctx->closed = true;
+
+	ctx->quux_closed(ctx);
 }
 
 bool* read_wanted_ref(quux_stream ctx) {
@@ -1182,9 +1188,15 @@ quux_stream quux_connect(quux_peer conn) {
 	}
 }
 
+/**
+ * NULL is an intentional value to specify that incoming streams should be rejected.
+ *
+ * It's not very helpful for listeners, but can be desirable for clients
+ */
 void quux_set_accept_cb(quux_peer peer, quux_cb quux_accept) {
 	peer->accept_cb = quux_accept;
 }
+
 void quux_set_readable_cb(quux_stream stream, quux_cb quux_readable) {
 	if (!quux_readable) {
 		quux_readable = null_cb;
@@ -1196,6 +1208,13 @@ void quux_set_writeable_cb(quux_stream stream, quux_cb quux_writeable) {
 		quux_writeable = null_cb;
 	}
 	stream->quux_writeable = quux_writeable;
+}
+
+void quux_set_closed_cb(quux_stream stream, quux_cb quux_closed) {
+	if (!quux_closed) {
+		quux_closed = null_cb;
+	}
+	stream->quux_closed = quux_closed;
 }
 
 quux_peer quux_get_peer(quux_stream stream) {
@@ -1213,13 +1232,23 @@ size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 
 void quux_write_close(quux_stream stream) {
 
-	// FIXME: this will not wait for all bytes to be acked !!!!!!
+	// FIXME: this will not wait for all bytes to be acked ???
+
+	// Actually, I think the session/connection will continue resending
+	// data in the background until ack'd.
+
+	// This won't send a stream fin or anything, which is probably for the best
+	// - works just as well and follows a simpler code path.
+	// Instead will cause stream RST to be sent when both write and read-side have been closed.
+
 	stream->quux_writeable = null_cb;
 	stream->CloseWriteSide();
 }
 
-int quux_write_is_closed(quux_stream stream) {
-	// TODO
+int quux_write_stream_status(quux_stream stream) {
+	if (stream->closed) {
+		return 1;
+	}
 	return 0;
 }
 
@@ -1246,8 +1275,10 @@ void quux_read_close(quux_stream stream) {
 	stream->StopReading();
 }
 
-int quux_read_is_closed(quux_stream stream) {
-	// TODO
+int quux_read_stream_status(quux_stream stream) {
+	if (stream->closed) {
+		return 1;
+	}
 	return 0;
 }
 

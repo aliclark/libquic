@@ -108,6 +108,16 @@ void quux_set_accept_cb(quux_peer, quux_cb quux_accept);
 void quux_set_readable_cb(quux_stream, quux_cb quux_readable);
 void quux_set_writeable_cb(quux_stream, quux_cb quux_writeable);
 
+/**
+ * When either side has decided to both stop reading and stop writing data,
+ * this function will be called.
+ *
+ * The stream handle is still valid at this point.
+ *
+ * Call quux_free to free the memory.
+ */
+void quux_set_closed_cb(quux_stream, quux_cb quux_closed);
+
 quux_peer quux_get_peer(quux_stream);
 
 /**
