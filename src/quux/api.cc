@@ -326,7 +326,7 @@ public:
 #endif
 							&writer,
 					false, net::Perspective::IS_CLIENT, supported_versions)),
-					session(new quux::client::Session(connection,
+					session(connection,
 #if SHADOW
 							*config,
 #else
@@ -339,7 +339,7 @@ public:
 #else
 							&verify_context, &crypto_client_config, &proof_handler,
 #endif
-					this)), out_messages(
+					this), out_messages(
 					writer.out_messages), num(&writer.num) {
 #if QUUX_LOG
 		connection->set_debug_visitor(&debug_visitor);
@@ -351,8 +351,9 @@ public:
 	quux::client::packet::Writer writer;
 
 	quux::connection::Logger debug_visitor;
+	// connection owned by session
 	net::QuicConnection* const connection;
-	quux::client::Session* const session;
+	quux::client::Session session;
 
 	// handy references
 	struct mmsghdr* const out_messages;
@@ -436,8 +437,8 @@ class quux_stream_client_s: public quux_stream_s {
 public:
 	explicit quux_stream_client_s(quux_peer_client_s* peer) :
 			quux_stream_s(Type::CLIENT, peer),
-					stream(new quux::client::Stream(peer->session->GetNextOutgoingStreamId(),
-					peer->session, this)) {
+					stream(new quux::client::Stream(peer->session.GetNextOutgoingStreamId(),
+					&peer->session, this)) {
 	}
 
 	net::QuicConsumedData WritevData(const struct iovec* iov) override {
