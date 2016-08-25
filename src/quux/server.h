@@ -209,7 +209,7 @@ public:
 			quux_stream ctx) :
 			QuicSpdyStream(id, spdy_session), ctx(ctx), read_wanted(
 					quux::read_wanted_ref(ctx)), write_wanted(
-					quux::write_wanted_ref(ctx)) {
+					quux::write_wanted_ref(ctx)), sending_fin(false) {
 
 		// nb. QuicSpdyStream() already registered stream priority for us
 		quux::server::session::activate_stream(spdy_session, this);
@@ -234,6 +234,16 @@ public:
 	}
 
 	void OnCanWrite() override {
+		if (sending_fin) {
+			net::QuicConsumedData consumed = net::ReliableQuicStream::WritevData(nullptr, 0, true, nullptr);
+			if (!consumed.fin_consumed) {
+				return;
+			}
+			sending_fin = false;
+			ReliableQuicStream::CloseWriteSide();
+			return;
+		}
+
 		if (!*write_wanted) {
 			return;
 		}
@@ -273,20 +283,28 @@ public:
 	}
 
 	void StopReading() override {
-		// NB. QuicSpdyStream: adds a requirement on 'fin' already being sent,
-		// which we don't want
+		if (sequencer()->ignore_read_data()) {
+			return;
+		}
+
 		ReliableQuicStream::StopReading();
 	}
+
 	void CloseWriteSide() override {
-		// NB. QuicSpdyStream: adds a requirement on 'fin' already being sent,
-		// which we don't want
-		ReliableQuicStream::CloseWriteSide();
+		if (write_side_closed()) {
+			return;
+		}
+
+		sending_fin = true;
+		OnCanWrite();
 	}
 
 	quux_stream const ctx;
 
 	bool* const read_wanted;
 	bool* const write_wanted;
+
+	bool sending_fin;
 };
 
 } /* namespace server */

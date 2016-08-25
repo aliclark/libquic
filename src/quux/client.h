@@ -183,7 +183,7 @@ public:
 			quux_stream ctx) :
 			ReliableQuicStream(id, session), ctx(ctx), read_wanted(
 					quux::read_wanted_ref(ctx)), write_wanted(
-					quux::write_wanted_ref(ctx)), sessionptr(session) {
+					quux::write_wanted_ref(ctx)), sending_fin(false), sessionptr(session) {
 
 		quux::client::session::register_stream(session, id);
 		quux::client::session::activate_stream(session, this);
@@ -204,6 +204,16 @@ public:
 	}
 
 	void OnCanWrite() override {
+		if (sending_fin) {
+			net::QuicConsumedData consumed = net::ReliableQuicStream::WritevData(nullptr, 0, true, nullptr);
+			if (!consumed.fin_consumed) {
+				return;
+			}
+			sending_fin = false;
+			ReliableQuicStream::CloseWriteSide();
+			return;
+		}
+
 		if (!*write_wanted) {
 			return;
 		}
@@ -217,10 +227,6 @@ public:
 	}
 
 	/// exposing protected methods
-
-	net::QuicConsumedData Writev(const struct iovec* iov) {
-		return net::ReliableQuicStream::WritevData(iov, 1, false, nullptr);
-	}
 
 	// We really want QuicStreamSequencerBuffer::Readv
 	// but alas it's private and hidden away :(
@@ -248,32 +254,46 @@ public:
 
 	uint8_t* peek_reference(size_t need) {
 		struct iovec iov;
-		int region = sequencer()->GetReadableRegions(&iov, 1);
-		if (!region) {
+		if (!sequencer()->GetReadableRegions(&iov, 1)) {
 			return nullptr;
 		}
 		if (iov.iov_len < need) {
 			return nullptr;
 		}
-		return iov.iov_base;
+		return (uint8_t*)iov.iov_base;
 	}
 
 	void skip(size_t amount) {
 		// mark "amount" of data as consumed.
 	}
 
+	net::QuicConsumedData Writev(const struct iovec* iov) {
+		return net::ReliableQuicStream::WritevData(iov, 1, false, nullptr);
+	}
 
 	void StopReading() override {
+		if (sequencer()->ignore_read_data()) {
+			return;
+		}
+
 		ReliableQuicStream::StopReading();
 	}
+
 	void CloseWriteSide() override {
-		ReliableQuicStream::CloseWriteSide();
+		if (write_side_closed()) {
+			return;
+		}
+
+		sending_fin = true;
+		OnCanWrite();
 	}
 
 	quux_stream const ctx;
 
 	bool* const read_wanted;
 	bool* const write_wanted;
+
+	bool sending_fin;
 
 	quux::client::Session* const sessionptr;
 };
