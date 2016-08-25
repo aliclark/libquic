@@ -210,6 +210,11 @@ int quux_read_stream_status(quux_stream stream);
 void quux_free_stream(quux_stream stream);
 
 /**
+ * Close a connection ungracefully and free its memory.
+ */
+void quux_close(quux_peer peer);
+
+/**
  * Stop accepting connections
  */
 void quux_shutdown(quux_listener server);

@@ -646,6 +646,9 @@ void set_stream_closed(quux_stream ctx) {
 	ctx->write_wanted = false;
 	ctx->closed = true;
 
+	// TODO: it would be best to trigger this in an alarm,
+	// so the callback can free the peer
+
 	ctx->quux_closed(ctx);
 }
 
@@ -1275,11 +1278,51 @@ int quux_read_stream_status(quux_stream stream) {
 	return 0;
 }
 
-void quux_free_stream(quux_stream stream) {
-	// ensure the stream is closed, so it doesn't start trying to use the memory later
-	quux_read_close(stream);
-	quux_write_close(stream);
+/**
+ * Close the peer.
+ *
+ * After this point the peer handle and any stream handles for it must not be used.
+ *
+ * As it stands, this function is quite problematic
+ * it won't wait for outstanding data to be ack'd before close
+ *
+ * Should probably make QUUX take care of this and triggering one last OnCloseComplete
+ * with some arbitrary callback supplied by the user.
+ *
+ * Or, allow the user to hook into OnDataAcked or something to allow them to close.
+ */
+void quux_close(quux_peer peer) {
+	net::QuicConnection* connection;
 
+	if (peer->type == quux_peer_s::CLIENT) {
+		quux_peer_client_s* client = (quux_peer_client_s*) peer;
+		connection = client->session.connection();
+	} else {
+		quux_peer_server_s* server = (quux_peer_server_s*) peer;
+		connection = server->session->connection();
+	}
+
+	peer->accept_cb = nullptr;
+
+	connection->CloseConnection(net::QUIC_PEER_GOING_AWAY, "fin",
+			net::ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+
+	// Send any packets that were recently created, including the one above.
+	// This is more of an optimistic thing, since those packets could be lost.
+	quux_event_base_loop_after();
+
+	// FIXME: can't do this from callbacks that need the peer later like stream OnClose
+	delete peer;
+}
+
+void quux_free_stream(quux_stream stream) {
+	if (!stream->closed) {
+		// ensure the stream is closed, so it doesn't start trying to use the memory later
+		quux_read_close(stream);
+		quux_write_close(stream);
+		// closing doesn't always happen instantly, so we expect OnClose callback may fire still
+		return;
+	}
 	delete stream;
 }
 
