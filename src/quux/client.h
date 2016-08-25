@@ -276,15 +276,19 @@ public:
 	}
 
 	void StopReading() override {
-		if (sequencer()->ignore_read_data()) {
-			return;
-		}
-
 		ReliableQuicStream::StopReading();
 	}
 
 	void CloseWriteSide() override {
-		if (sending_fin || write_side_closed()) {
+		if (write_side_closed()) {
+			return;
+		}
+		if (!sessionptr->connection()->connected()) {
+			// can't send a fin in this case
+			ReliableQuicStream::CloseWriteSide();
+			return;
+		}
+		if (sending_fin) {
 			return;
 		}
 

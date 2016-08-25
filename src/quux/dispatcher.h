@@ -66,6 +66,7 @@ public:
 	const net::IPEndPoint self_endpoint;
 	quux_listener const ctx;
 
+	// XXX: this shouldn't be on the peer itself - that can get cleaned up before packets have finished sending.
 	quux::server::packet::Writer writer;
 };
 

@@ -188,6 +188,13 @@ public:
 				false, this);
 	}
 
+	void OnConnectionClosed(net::QuicErrorCode error,
+			const std::string& error_details, net::ConnectionCloseSource source)
+					override {
+		QuicServerSessionBase::OnConnectionClosed(error, error_details, source);
+		quux::set_peer_closed(peer_ctx);
+	}
+
 	/// exposing protected methods
 
 	void ActivateStream(net::ReliableQuicStream* stream) override {
@@ -205,14 +212,14 @@ public:
 // FIXME: hack at the QuicDispatcher to make it not depend on SPDY :(
 class Stream: public net::QuicSpdyStream {
 public:
-	Stream(net::QuicStreamId id, quux::server::Session* spdy_session,
+	Stream(net::QuicStreamId id, quux::server::Session* session,
 			quux_stream ctx) :
-			QuicSpdyStream(id, spdy_session), ctx(ctx), read_wanted(
+			QuicSpdyStream(id, session), ctx(ctx), read_wanted(
 					quux::read_wanted_ref(ctx)), write_wanted(
-					quux::write_wanted_ref(ctx)), sending_fin(false) {
+					quux::write_wanted_ref(ctx)), sending_fin(false), sessionptr(session) {
 
 		// nb. QuicSpdyStream() already registered stream priority for us
-		quux::server::session::activate_stream(spdy_session, this);
+		quux::server::session::activate_stream(session, this);
 
 		// QuicSpdyStream() set sequencer() blocked for headers,
 		// but on MarkHeadersConsumed(0) it will be set unblocked again
@@ -293,18 +300,21 @@ public:
 	 * It seems more hassle than worth so will leave it alone for now.
 	 */
 	void StopReading() override {
-		if (sequencer()->ignore_read_data()) {
-			return;
-		}
-
 		ReliableQuicStream::StopReading();
 	}
 
 	void CloseWriteSide() override {
-		if (sending_fin || write_side_closed()) {
+		if (write_side_closed()) {
 			return;
 		}
-
+		if (!sessionptr->connection()->connected()) {
+			// can't send a fin in this case
+			ReliableQuicStream::CloseWriteSide();
+			return;
+		}
+		if (sending_fin) {
+			return;
+		}
 		sending_fin = true;
 		OnCanWrite();
 	}
@@ -315,6 +325,8 @@ public:
 	bool* const write_wanted;
 
 	bool sending_fin;
+
+	quux::server::Session* const sessionptr;
 };
 
 } /* namespace server */

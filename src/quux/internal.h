@@ -25,6 +25,8 @@ void set_stream_closed(quux_stream ctx);
 bool* read_wanted_ref(quux_stream ctx);
 bool* write_wanted_ref(quux_stream ctx);
 
+void set_peer_closed(quux_peer ctx);
+
 extern struct event_base *event_base;
 
 namespace server {

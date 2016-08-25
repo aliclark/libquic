@@ -278,7 +278,7 @@ public:
 			const net::IPEndPoint& self_endpoint,
 			const net::IPEndPoint& peer_endpoint) :
 			type(type), sd(sd), self_endpoint(self_endpoint), peer_endpoint(
-					peer_endpoint), accept_cb(nullptr), arg(nullptr) {
+					peer_endpoint), accept_cb(nullptr), closed(false), arg(nullptr) {
 	}
 
 	virtual ~quux_peer_s() {
@@ -291,6 +291,8 @@ public:
 	const net::IPEndPoint peer_endpoint;
 
 	quux_cb accept_cb;
+
+	bool closed;
 
 	// handy slot for application code to associate an arbitrary structure
 	void* arg;
@@ -657,6 +659,10 @@ bool* read_wanted_ref(quux_stream ctx) {
 }
 bool* write_wanted_ref(quux_stream ctx) {
 	return &ctx->write_wanted;
+}
+
+void set_peer_closed(quux_peer ctx) {
+	ctx->closed = true;
 }
 
 // This will be set if we're using libevent
@@ -1183,6 +1189,18 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* peer_sockaddr) 
 }
 
 quux_stream quux_connect(quux_peer conn) {
+
+	if (conn->type == quux_peer_s::CLIENT) {
+		// we don't get notified on client close, so check here instead
+		quux_peer_client_s* client = (quux_peer_client_s*) conn;
+		conn->closed = !client->session.connection()->connected();
+	}
+
+	if (conn->closed) {
+		// TODO: should probably return a "dummy" channel instead
+		return nullptr;
+	}
+
 	if (conn->type == quux_peer_s::SERVER) {
 		return new quux_stream_server_s((quux_peer_server_s*)conn);
 	} else {
@@ -1299,23 +1317,37 @@ int quux_read_stream_status(quux_stream stream) {
  * Or, allow the user to hook into OnDataAcked or something to allow them to close.
  */
 void quux_close(quux_peer peer) {
-	net::QuicConnection* connection;
 
 	if (peer->type == quux_peer_s::CLIENT) {
+		// we don't get notified on client close, so check here instead
 		quux_peer_client_s* client = (quux_peer_client_s*) peer;
-		connection = client->session.connection();
-	} else {
-		quux_peer_server_s* server = (quux_peer_server_s*) peer;
-		connection = server->session->connection();
+		peer->closed = !client->session.connection()->connected();
 	}
 
-	peer->accept_cb = nullptr;
+	if (!peer->closed) {
+		net::QuicConnection* connection;
 
-	connection->CloseConnection(net::QUIC_PEER_GOING_AWAY, "fin",
-			net::ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+		// FIXME: if the other side closed us, then peer->session.connection is no longer valid
+		// we should record on the peer whenever the other side has closed us
+		// so that we don't use the peer's memory
+
+		if (peer->type == quux_peer_s::CLIENT) {
+			quux_peer_client_s* client = (quux_peer_client_s*) peer;
+			connection = client->session.connection();
+		} else {
+			quux_peer_server_s* server = (quux_peer_server_s*) peer;
+			connection = server->session->connection();
+		}
+
+		peer->accept_cb = nullptr;
+
+		connection->CloseConnection(net::QUIC_PEER_GOING_AWAY, "fin",
+				net::ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+	}
 
 	// Send any packets that were recently created, including the one above.
 	// This is more of an optimistic thing, since those packets could be lost.
+	// Ensures that peer is definitely not lingering in the writes ready lists
 	quux_event_base_loop_after();
 
 	// FIXME: can't do this from callbacks that need the peer later like stream OnClose
