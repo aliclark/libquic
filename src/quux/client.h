@@ -267,8 +267,12 @@ public:
 		// mark "amount" of data as consumed.
 	}
 
-	net::QuicConsumedData Writev(const struct iovec* iov) {
-		return net::ReliableQuicStream::WritevData(iov, 1, false, nullptr);
+	size_t Writev(const struct iovec* iov) {
+		if (sending_fin) {
+			return 0;
+		}
+		net::QuicConsumedData consumed(ReliableQuicStream::WritevData(iov, 1, false, nullptr));
+		return consumed.bytes_consumed;
 	}
 
 	void StopReading() override {

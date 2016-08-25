@@ -409,7 +409,7 @@ public:
 	virtual size_t peek(uint8_t* dst, size_t count) = 0;
 	virtual int Readv(const struct iovec* iov) = 0;
 
-	virtual net::QuicConsumedData WritevData(const struct iovec* iov) = 0;
+	virtual size_t Writev(const struct iovec* iov) = 0;
 
 	virtual void StopReading() = 0;
 	virtual void CloseWriteSide() = 0;
@@ -442,9 +442,9 @@ public:
 					&peer->session, this)) {
 	}
 
-	net::QuicConsumedData WritevData(const struct iovec* iov) override {
+	size_t Writev(const struct iovec* iov) override {
 		if (closed) {
-			return net::QuicConsumedData(0, 0);
+			return 0;
 		}
 		return stream->Writev(iov);
 	}
@@ -486,9 +486,9 @@ public:
 							peer->session, this)) {
 	}
 
-	net::QuicConsumedData WritevData(const struct iovec* iov) override {
+	size_t Writev(const struct iovec* iov) override {
 		if (closed) {
-			return net::QuicConsumedData(0, 0);
+			return 0;
 		}
 		return stream->Writev(iov);
 	}
@@ -529,9 +529,9 @@ public:
 					new quux::client::Stream(id, session, this)) {
 	}
 
-	net::QuicConsumedData WritevData(const struct iovec* iov) override {
+	size_t Writev(const struct iovec* iov) override {
 		if (closed) {
-			return net::QuicConsumedData(0, 0);
+			return 0;
 		}
 		return stream->Writev(iov);
 	}
@@ -572,9 +572,9 @@ public:
 					new quux::server::Stream(id, session, this)) {
 	}
 
-	net::QuicConsumedData WritevData(const struct iovec* iov) override {
+	size_t Writev(const struct iovec* iov) override {
 		if (closed) {
-			return net::QuicConsumedData(0, 0);
+			return 0;
 		}
 		return stream->Writev(iov);
 	}
@@ -1222,11 +1222,11 @@ quux_peer quux_get_peer(quux_stream stream) {
 
 size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 	struct iovec iov = { (void*) buf, count };
-	net::QuicConsumedData consumed(stream->WritevData(&iov));
-	if (consumed.bytes_consumed == 0) {
+	size_t written = stream->Writev(&iov);
+	if (!written) {
 		stream->write_wanted = true;
 	}
-	return consumed.bytes_consumed;
+	return written;
 }
 
 void quux_write_close(quux_stream stream) {
