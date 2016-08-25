@@ -92,8 +92,8 @@ quux_peer quux_open(const char* hostname, const struct sockaddr* addr);
  * therefore please make a copy if persistence is needed.
  */
 // TODO:
-// const struct sockaddr* quux_get_remote_addr(quux_peer);
-// const struct sockaddr* quux_get_bind_addr(quux_peer);
+// const struct sockaddr* quux_get_remote_addr_reference(quux_peer);
+// const struct sockaddr* quux_get_bind_addr_reference(quux_peer);
 
 /**
  * Create a new stream on the connection conn.

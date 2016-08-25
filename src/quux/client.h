@@ -263,8 +263,8 @@ public:
 		return (uint8_t*)iov.iov_base;
 	}
 
-	void skip(size_t amount) {
-		// mark "amount" of data as consumed.
+	void MarkConsumed(size_t amount) {
+		sequencer()->MarkConsumed(amount);
 	}
 
 	size_t Writev(const struct iovec* iov) {

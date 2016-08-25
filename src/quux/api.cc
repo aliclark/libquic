@@ -411,6 +411,9 @@ public:
 	virtual size_t peek(uint8_t* dst, size_t count) = 0;
 	virtual int Readv(const struct iovec* iov) = 0;
 
+	virtual uint8_t* peek_reference(size_t need) = 0;
+	virtual void MarkConsumed(size_t amount) = 0;
+
 	virtual size_t Writev(const struct iovec* iov) = 0;
 
 	virtual void StopReading() = 0;
@@ -462,6 +465,19 @@ public:
 		}
 		return stream->Readv(iov);
 	}
+	uint8_t* peek_reference(size_t need) override {
+		if (closed) {
+			return nullptr;
+		}
+		return stream->peek_reference(need);
+	}
+	void MarkConsumed(size_t amount) {
+		if (closed) {
+			return;
+		}
+		return stream->MarkConsumed(amount);
+	}
+
 	void StopReading() override {
 		if (closed) {
 			return;
@@ -506,6 +522,18 @@ public:
 		}
 		return stream->Readv(iov, 1);
 	}
+	uint8_t* peek_reference(size_t need) override {
+		if (closed) {
+			return nullptr;
+		}
+		return stream->peek_reference(need);
+	}
+	void MarkConsumed(size_t amount) {
+		if (closed) {
+			return;
+		}
+		return stream->MarkConsumed(amount);
+	}
 	void StopReading() override {
 		if (closed) {
 			return;
@@ -549,6 +577,18 @@ public:
 		}
 		return stream->Readv(iov);
 	}
+	uint8_t* peek_reference(size_t need) override {
+		if (closed) {
+			return nullptr;
+		}
+		return stream->peek_reference(need);
+	}
+	void MarkConsumed(size_t amount) {
+		if (closed) {
+			return;
+		}
+		return stream->MarkConsumed(amount);
+	}
 	void StopReading() override {
 		if (closed) {
 			return;
@@ -591,6 +631,18 @@ public:
 			return 0;
 		}
 		return stream->Readv(iov, 1);
+	}
+	uint8_t* peek_reference(size_t need) override {
+		if (closed) {
+			return nullptr;
+		}
+		return stream->peek_reference(need);
+	}
+	void MarkConsumed(size_t amount) {
+		if (closed) {
+			return;
+		}
+		return stream->MarkConsumed(amount);
 	}
 	void StopReading() override {
 		if (closed) {
@@ -1284,11 +1336,11 @@ size_t quux_read(quux_stream stream, uint8_t* buf, size_t count) {
 }
 
 uint8_t* quux_peek_reference(quux_stream stream, size_t count) {
-	return nullptr;
+	return stream->peek_reference(count);
 }
 
 void quux_read_consume(quux_stream stream, size_t count) {
-	assert(0);
+	stream->MarkConsumed(count);
 }
 
 void quux_read_close(quux_stream stream) {

@@ -285,6 +285,21 @@ public:
 	    return seen;
 	}
 
+	uint8_t* peek_reference(size_t need) {
+		struct iovec iov;
+		if (!sequencer()->GetReadableRegions(&iov, 1)) {
+			return nullptr;
+		}
+		if (iov.iov_len < need) {
+			return nullptr;
+		}
+		return (uint8_t*)iov.iov_base;
+	}
+
+	void MarkConsumed(size_t amount) {
+		sequencer()->MarkConsumed(amount);
+	}
+
 	size_t Writev(const struct iovec* iov) {
 		if (sending_fin) {
 			return 0;
