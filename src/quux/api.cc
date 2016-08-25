@@ -1351,7 +1351,8 @@ void quux_close(quux_peer peer) {
 	quux_event_base_loop_after();
 
 	// FIXME: can't do this from callbacks that need the peer later like stream OnClose
-	delete peer;
+	// FIXME: alarms continue to fire and try to act on the invalid memory :/
+	//delete peer;
 }
 
 void quux_free_stream(quux_stream stream) {
