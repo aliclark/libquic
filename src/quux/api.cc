@@ -167,7 +167,6 @@ static quux::alarm::Factory alarm_factory(&time_to_alarm_map);
 
 static quux::alarm::LibeventFactory libevent_alarm_factory;
 
-static net::ProofVerifyContext verify_context;
 static net::QuicCryptoClientConfig crypto_client_config(new quux::proof::Verifier());
 static quux::proof::Handler proof_handler;
 
@@ -335,9 +334,9 @@ public:
 							net::QuicServerId(peer_endpoint.ToStringWithoutPort(),
 							peer_endpoint.port(), net::PRIVACY_MODE_DISABLED),
 #if SHADOW
-							verify_context, crypto_client_config, proof_handler,
+							new net::ProofVerifyContext(), crypto_client_config, proof_handler,
 #else
-							&verify_context, &crypto_client_config, &proof_handler,
+							new net::ProofVerifyContext(), &crypto_client_config, &proof_handler,
 #endif
 					this), out_messages(
 					writer.out_messages), num(&writer.num) {
