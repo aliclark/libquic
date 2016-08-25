@@ -1231,16 +1231,6 @@ size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 }
 
 void quux_write_close(quux_stream stream) {
-
-	// FIXME: this will not wait for all bytes to be acked ???
-
-	// Actually, I think the session/connection will continue resending
-	// data in the background until ack'd.
-
-	// This won't send a stream fin or anything, which is probably for the best
-	// - works just as well and follows a simpler code path.
-	// Instead will cause stream RST to be sent when both write and read-side have been closed.
-
 	stream->quux_writeable = null_cb;
 	stream->CloseWriteSide();
 }

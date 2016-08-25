@@ -39,6 +39,7 @@ void server_writeable(quux_stream stream) {
 	}
 
 	info("quux_write: %s", buf);
+	quux_write_close(stream);
 }
 void server_readable(quux_stream stream) {
 	info("server_readable");
@@ -53,23 +54,33 @@ void server_readable(quux_stream stream) {
 	}
 
 	info("quux_read: %s", buf);
+	quux_read_close(stream);
 	server_writeable(stream);
+}
+void server_closed(quux_stream stream) {
+	info("server_closed");
+	quux_free_stream(stream);
 }
 void server_accept(quux_stream stream) {
 	info("server_accept");
 	quux_set_readable_cb(stream, server_readable);
 	quux_set_writeable_cb(stream, server_writeable);
+	quux_set_closed_cb(stream, server_closed);
 	server_readable(stream);
 }
+
 void server_connected(quux_peer peer) {
 	info("server_connected");
 	quux_set_accept_cb(peer, server_accept);
 
 	void client_readable(quux_stream stream);
 	void client_writeable(quux_stream stream);
+	void client_closed(quux_stream stream);
+
 	quux_stream stream2 = quux_connect(peer);
 	quux_set_readable_cb(stream2, client_readable);
 	quux_set_writeable_cb(stream2, client_writeable);
+	quux_set_closed_cb(stream2, client_closed);
 	client_writeable(stream2);
 }
 
@@ -86,6 +97,7 @@ void client_readable(quux_stream stream) {
 	}
 
 	info("quux_read: %s", buf);
+	quux_read_close(stream);
 }
 void client_writeable(quux_stream stream) {
 	info("client_writeable");
@@ -99,13 +111,19 @@ void client_writeable(quux_stream stream) {
 	}
 
 	info("quux_write: %s", hello);
+	quux_write_close(stream);
 	client_readable(stream);
 }
 void client_accept(quux_stream stream) {
 	info("client_accept");
 	quux_set_readable_cb(stream, server_readable);
 	quux_set_writeable_cb(stream, server_writeable);
+	quux_set_closed_cb(stream, server_closed);
 	server_readable(stream);
+}
+void client_closed(quux_stream stream) {
+	info("client_closed");
+	quux_free_stream(stream);
 }
 
 int main(int argc, char** argv) {
@@ -124,6 +142,7 @@ int main(int argc, char** argv) {
 		quux_stream stream = quux_connect(peer);
 		quux_set_readable_cb(stream, client_readable);
 		quux_set_writeable_cb(stream, client_writeable);
+		quux_set_closed_cb(stream, client_closed);
 
 		client_writeable(stream);
 

@@ -297,7 +297,7 @@ public:
 	}
 
 	void CloseWriteSide() override {
-		if (write_side_closed()) {
+		if (sending_fin || write_side_closed()) {
 			return;
 		}
 
