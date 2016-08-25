@@ -282,6 +282,12 @@ public:
 		return net::ReliableQuicStream::WritevData(iov, 1, false, nullptr);
 	}
 
+	/*
+	 * XXX: It would be nice to send Reset(QUIC_STREAM_NO_ERROR) under some conditions to
+	 * inform the other side to stop writing. However, there's a slight mismatch
+	 * between what the protocol says, Core QUIC says and SPDY QUIC says.
+	 * It seems more hassle than worth so will leave it alone for now.
+	 */
 	void StopReading() override {
 		if (sequencer()->ignore_read_data()) {
 			return;
