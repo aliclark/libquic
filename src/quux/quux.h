@@ -123,6 +123,11 @@ void quux_set_closed_cb(quux_stream, quux_cb quux_closed);
 quux_peer quux_get_peer(quux_stream);
 
 /**
+ * 1 if the stream is fully closed, 0 otherwise.
+ */
+int quux_stream_status(quux_stream stream);
+
+/**
  * Pass up to 'count' octets from 'buf' to the stream for send.
  *
  * Returned amount tells us how much data was transfered.

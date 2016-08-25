@@ -1223,6 +1223,13 @@ quux_peer quux_get_peer(quux_stream stream) {
 	return stream->peer;
 }
 
+int quux_stream_status(quux_stream stream) {
+	if (stream->closed) {
+		return 1;
+	}
+	return 0;
+}
+
 size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count) {
 	struct iovec iov = { (void*) buf, count };
 	size_t written = stream->Writev(&iov);
