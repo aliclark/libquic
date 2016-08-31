@@ -20,15 +20,13 @@ typedef void (*quux_connected)(quux_peer);
 typedef void (*quux_cb)(quux_stream);
 
 /*
- * Callbacks are triggered once when IO becomes actionable, at which point no callback will be triggered until
+ * Callbacks are triggered once when IO becomes actionable,
+ * at which point no callback will be triggered until
  * the read/write operation on that stream has returned 0.
  *
- * quux_c begins in triggered state for both read/write, which means IO can be attempted (albeit may return 0).
- *
- * XXX: perhaps instead of:
- * quux_stream quux_connect(quux_peer, quux_cb quux_readable, quux_cb quux_writeable);
- *
- * quux_stream quux_connect(quux_peer);
+ * A quux_stream begins in triggered state for both read/write,
+ * so no further callbacks will be made.
+ * However IO can still be attempted (albeit may return 0).
  */
 
 /**
@@ -39,7 +37,7 @@ int quux_init_loop(void);
 struct event_base;
 
 /**
- * Initialise the module, with your own libevent loop being used
+ * Initialise the module, with your own libevent loop being used.
  *
  * EVLOOP_ONCE *must* be used in the event_base_loop call,
  * otherwise quux's internal time cache will start to go stale.
@@ -70,40 +68,40 @@ void quux_reset_errno(void);
 /**
  * Start a listener for new streams on IPv4 addr.
  *
+ * quux_connected cb is called with the peer when a fresh client connects.
+ *
+ *
  * TODO: error if there is already a server listening on ip:port
  *
  * TODO: quux_set_connected_cb instead
- *
- * quux_connected cb is called with the peer when a fresh client connects.
  */
 quux_listener quux_listen(const struct sockaddr* addr, quux_connected cb);
 
 /**
- * A handle representing an IPv4 connection to the peer.
+ * Returns a handle representing an IPv4 connection to the peer.
  *
- * This will kick off the crypto handshake in the background.
+ * This will also start the crypto handshake in the background.
  *
- * TODO: FIXME: somehow fail to connect if cert doesn't match hostname UTF8.
+ * WARNING: Incomplete:
+ * TODO: FIXME: fail to connect if cert doesn't match hostname UTF8.
  */
 quux_peer quux_open(const char* hostname, const struct sockaddr* addr);
 
+// TODO:
 /**
  * Nb. the sockaddr* will be valid for as long as the quux_peer,
  * therefore please make a copy if persistence is needed.
  */
-// TODO:
 // const struct sockaddr* quux_get_remote_addr_reference(quux_peer);
 // const struct sockaddr* quux_get_bind_addr_reference(quux_peer);
 
 /**
- * Create a new stream on the connection conn.
- *
- * ctx will automatically be supplied to the callbacks when they activate
+ * Create a new stream over the connection.
  */
 quux_stream quux_connect(quux_peer peer);
 
 /**
- * If the accept callback is not installed then incoming streams will be rejected.
+ * Nb. If the accept callback is not installed then incoming streams will be rejected.
  */
 void quux_set_accept_cb(quux_peer, quux_cb quux_accept);
 
@@ -116,7 +114,7 @@ void quux_set_writeable_cb(quux_stream, quux_cb quux_writeable);
  *
  * The stream handle is still valid at this point.
  *
- * Call quux_free to free the memory.
+ * quux_free_stream should be called to free the memory.
  */
 void quux_set_closed_cb(quux_stream, quux_cb quux_closed);
 
@@ -132,16 +130,19 @@ int quux_stream_status(quux_stream stream);
  *
  * Returned amount tells us how much data was transfered.
  * 0 indicates that no data could be written at this time, but the callback has been re-registered.
- * Call 'quux_write_is_closed' to find out if the stream is no longer writeable.
+ * Call 'quux_write_stream_status' to find out if the stream is no longer writeable.
  *
  * The initial behaviour will be that once quux_read_close();quux_write_close(); have been called,
- * it's at the discretion of the impl to wait as long as necessary to receive acks for data before tearing down.
- * At some point more functions could be added to query the status of buffered data and force remove if needed.
+ * it's at the discretion of the impl to wait as long
+ * as necessary to receive acks for data before tearing down.
+ *
+ * At some point more functions could be added to query
+ * the status of buffered data and force remove if needed.
  */
 size_t quux_write(quux_stream stream, const uint8_t* buf, size_t count);
 
 /**
- * Indicate we don't want to write any additional data to the stream.
+ * Indicate that we don't want to write any additional data to the stream.
  */
 void quux_write_close(quux_stream stream);
 
@@ -158,7 +159,7 @@ int quux_write_stream_status(quux_stream stream);
  *
  * Returned amount tells us how much data was transfered.
  * 0 indicates that no data could be read at this time, but the callback has been re-registered.
- * Call 'quux_read_is_closed' to find out if the stream is no longer readable.
+ * Call 'quux_read_stream_status' to find out if the stream is no longer readable.
  */
 size_t quux_peek(quux_stream stream, uint8_t* buf, size_t count);
 
@@ -167,7 +168,7 @@ size_t quux_peek(quux_stream stream, uint8_t* buf, size_t count);
  *
  * Returned amount tells us how much data was transfered.
  * 0 indicates that no data could be read at this time, but the callback has been re-registered.
- * Call 'quux_read_is_closed' to find out if the stream is no longer readable.
+ * Call 'quux_read_stream_status' to find out if the stream is no longer readable.
  */
 size_t quux_read(quux_stream stream, uint8_t* buf, size_t count);
 
@@ -185,9 +186,9 @@ size_t quux_read(quux_stream stream, uint8_t* buf, size_t count);
  * This function will not result in callbacks being reregistered in that case.
  *
  * quux_peek or quux_read should be used instead if NULL is returned,
- * since the data may be available, albeit not already in a contiguous buffer.
+ * since the data may be available, just not in a contiguous buffer.
  *
- * Otherwise, call quux_read_consume afterwards to remove the data from input.
+ * Call quux_read_consume afterwards to remove the data from input.
  */
 uint8_t* quux_peek_reference(quux_stream stream, size_t count);
 
@@ -198,7 +199,7 @@ uint8_t* quux_peek_reference(quux_stream stream, size_t count);
 void quux_read_consume(quux_stream stream, size_t count);
 
 /**
- * Indicate we don't want to read any additional data from the stream.
+ * Indicate that we don't want to read any additional data from the stream.
  */
 void quux_read_close(quux_stream stream);
 
@@ -216,28 +217,30 @@ void quux_free_stream(quux_stream stream);
 
 /**
  * Close a connection ungracefully and free its memory.
+ *
+ * TODO: FIXME: Beware, this is currently incomplete and should not be used.
  */
 void quux_close(quux_peer peer);
 
 /**
  * Stop accepting connections
+ *
+ * TODO: FIXME: Beware, this is currently incomplete and should not be used.
  */
 void quux_shutdown(quux_listener server);
 
 /**
  * Run the built-in epoll event loop forever.
- *
- * The function will return after timeout_ms has elapsed,
- * or never if timeout_ms is set to -1
  */
 void quux_loop(void);
 
+// TODO:
 /**
  * Run the built-in epoll event loop.
  *
  * The function will return after timeout_ms has elapsed.
  */
-// TODO: void quux_loop_with_timeout(int timeout_ms);
+// void quux_loop_with_timeout(int timeout_ms);
 
 /**
  * Run this just after libevent wait wakes up.
