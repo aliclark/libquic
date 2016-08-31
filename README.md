@@ -1,3 +1,14 @@
+
+WARNING: This branch is extremely experimental !
+================================================
+
+This library does not perform certificate validation and is very likely to
+contain bugs - do not use it under any circumstances for anything other than
+testing.
+
+Please get in contact if you are interested in using the library to register
+your interest and get a more up-to-date status on progress.
+
 QUIC, a multiplexed stream transport over UDP
 =============================================
 
